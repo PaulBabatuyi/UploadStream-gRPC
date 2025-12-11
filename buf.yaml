@@ -1,0 +1,37 @@
+# buf.yaml – Main Buf workspace configuration
+# This file defines your module, dependencies, linting, and breaking change rules
+# Place it in your project root (same level as proto/ and buf.gen.yaml)
+version: v1  # Required: Buf v1 format (matches your gen config)
+
+# Module identity: Your unique name on Buf Schema Registry (BSR)
+# Use this for 'buf push' to share your .proto schema
+name: buf.build/PaulBabatuyi/UploadStream-gRPC
+
+# Dependencies: Remote .proto files your module imports (fetched via 'buf dep update')
+deps:
+  # Protovalidate: Provides validation annotations like (buf.validate.field).string.pattern
+  # Pinned to v0.8.1 (latest stable as of Dec 2025) to avoid fetch errors
+  # This pulls in buf.validate/validate.proto and related files
+  - buf.build/bufbuild/protovalidate
+ 
+
+# Breaking change detection: What counts as a breaking change
+breaking:
+  use:
+    # FILE: Checks for semantic breaks at the file level (safe, catches most issues)
+    - FILE
+
+# Linting rules: Enforces code style and best practices
+lint:
+  use:
+    # STANDARD: Basic proto syntax, naming, and structure rules
+    - STANDARD
+    # COMMENTS: Requires doc comments on services, messages, fields (enforced)
+    - COMMENTS
+    # PROTOVALIDATE: Specific rules for validation annotations (e.g., required fields)
+    - PROTOVALIDATE
+  except:
+    # FIELD_LOWER_SNAKE_CASE: Allow camelCase fields (matches Go conventions)
+    - FIELD_LOWER_SNAKE_CASE
+    # PACKAGE_VERSION_SUFFIX: We use 'v1' in package name, not as suffix
+    - PACKAGE_VERSION_SUFFIX

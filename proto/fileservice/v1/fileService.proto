@@ -1,0 +1,168 @@
+syntax = "proto3";
+
+// Package name for the service — follows Buf best practices
+package fileservice.v1;
+
+// Protovalidate annotations for server-side validation
+import "buf/validate/validate.proto";
+// Standard imports
+import "google/protobuf/timestamp.proto";
+
+// Go package declaration — will be overridden by buf managed mode
+option go_package = "github.com/PaulBabatuyi/UploadStream-gRPC/gen/fileservice/v1;fileservicev1";
+
+// FileService handles file upload, download, and management
+service FileService {
+  // Client-streaming RPC: client sends chunks → server stores file
+  rpc UploadFile(stream UploadFileRequest) returns (UploadFileResponse);
+
+  // Server-streaming RPC: server sends file chunks back to client
+  rpc DownloadFile(DownloadFileRequest) returns (stream DownloadFileResponse);
+
+  // Get file metadata
+  rpc GetFileMetadata(GetFileMetadataRequest) returns (GetFileMetadataResponse);
+
+  // List user's files
+  rpc ListFiles(ListFilesRequest) returns (ListFilesResponse);
+
+  // Delete a file
+  rpc DeleteFile(DeleteFileRequest) returns (DeleteFileResponse);
+}
+
+// UploadFileRequest is sent by client in chunks
+message UploadFileRequest {
+  oneof data {
+    // First message in the stream must contain metadata
+    FileMetadata metadata = 1;
+    // All subsequent messages are raw file chunks (max 4MB recommended)
+    bytes chunk = 2;
+  }
+}
+
+// Metadata sent in the very first UploadFileRequest message
+message FileMetadata {
+  // Original filename (e.g., "vacation.jpg")
+  string filename = 1 [(buf.validate.field).string = {
+    min_len: 1
+    max_len: 255
+    // Prevent directory traversal and dangerous characters
+    pattern: "^[\\w\\-. ][\\w\\-. ]*$"
+  }];
+
+  // MIME type (e.g., "image/jpeg", "application/pdf")
+  string content_type = 2 [(buf.validate.field).string.pattern = "^[a-z]+/[a-z0-9\\+\\-\\.]+$"];
+
+  // Total expected file size in bytes
+  int64 size = 3 [(buf.validate.field).int64 = {
+    gte: 1 // At least 1 byte
+    lte: 536870912 // Max 512 MB (adjust as needed)
+  }];
+
+  // Required: identifies which user is uploading
+  string user_id = 4 [(buf.validate.field).string.uuid = true];
+
+  // Optional: client-generated upload ID for resume support later
+  string upload_id = 5;
+}
+
+// Response after successful upload
+message UploadFileResponse {
+  string file_id = 1; // Generated UUID
+  string filename = 2;
+  int64 size = 3;
+  string content_type = 4;
+  google.protobuf.Timestamp uploaded_at = 5;
+  ProcessingStatus processing_status = 6; // Initial state: PENDING
+}
+
+// DownloadFileRequest specifies which file to download
+message DownloadFileRequest {
+  string file_id = 1 [(buf.validate.field).string.uuid = true];
+}
+
+// DownloadFileResponse streams file data back to client
+message DownloadFileResponse {
+  oneof data {
+    FileInfo info = 1; // First message contains file info
+    bytes chunk = 2; // Subsequent messages contain file raw chunks (max 4MB recommended)
+  }
+}
+
+message FileInfo {
+  string file_id = 1;
+  string filename = 2;
+  string content_type = 3;
+  int64 size = 4;
+  google.protobuf.Timestamp uploaded_at = 5;
+}
+
+// GetFileMetadataRequest requests metadata for a specific file
+message GetFileMetadataRequest {
+  string file_id = 1 [(buf.validate.field).string.uuid = true];
+}
+
+message GetFileMetadataResponse {
+  string file_id = 1;
+  string filename = 2;
+  string content_type = 3;
+  int64 size = 4;
+  google.protobuf.Timestamp uploaded_at = 5;
+  ProcessingStatus processing_status = 6;
+  ProcessingResult processing_result = 7;
+}
+
+// ListFilesRequest with pagination
+message ListFilesRequest {
+  string user_id = 1 [(buf.validate.field).string.uuid = true];
+  int32 page_size = 2 [(buf.validate.field).int32 = {
+    gte: 1
+    lte: 100
+  }];
+  string page_token = 3;
+}
+
+message ListFilesResponse {
+  repeated FileEntry files = 1;
+  string next_page_token = 2;
+}
+
+message FileEntry {
+  string file_id = 1;
+  string filename = 2;
+  string content_type = 3;
+  int64 size = 4;
+  google.protobuf.Timestamp uploaded_at = 5;
+  ProcessingStatus processing_status = 6;
+}
+
+// DeleteFileRequest specifies which file to delete
+message DeleteFileRequest {
+  string file_id = 1 [(buf.validate.field).string.uuid = true];
+  string user_id = 2 [(buf.validate.field).string.uuid = true]; // Ownership check
+}
+
+message DeleteFileResponse {
+  bool success = 1;
+  string message = 2;
+}
+
+// ProcessingStatus represents the file processing state
+enum ProcessingStatus {
+  PROCESSING_STATUS_UNSPECIFIED = 0;
+  PROCESSING_STATUS_PENDING = 1;
+  PROCESSING_STATUS_PROCESSING = 2;
+  PROCESSING_STATUS_COMPLETED = 3;
+  PROCESSING_STATUS_FAILED = 4;
+}
+
+// ProcessingResult contains results from file processing
+// Results of background processing (e.g., image thumbnails)
+message ProcessingResult {
+  // Public URL to thumbnail (or relative path)
+  string thumbnail_small = 1;
+  string thumbnail_medium = 2;
+  string thumbnail_large = 3;
+  int32 original_width = 4;
+  int32 original_height = 5;
+  string error_message = 6; // Populated only on failure
+}
