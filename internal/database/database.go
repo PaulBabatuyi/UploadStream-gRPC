@@ -46,8 +46,9 @@ func (p *PostgresDB) SaveFile(ctx context.Context, fileID string, metadata *file
 		metadata.Filename,
 		metadata.ContentType,
 		size,
-		fileID, // storage path is same as fileID for filesystem storage
+		fileID,
 		time.Now(),
+		nil,
 	)
 
 	return err

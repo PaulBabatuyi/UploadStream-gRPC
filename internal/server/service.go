@@ -18,8 +18,8 @@ import (
 
 type StorageInterface interface {
 	CreateFile(fileID string) (io.WriteCloser, error)
-	ReadFile(path string) (io.ReadCloser, error)
-	DeleteFile(path string) error
+	ReadFile(fileID string) (io.ReadCloser, error)
+	DeleteFile(fileID string) error
 }
 
 type DatabaseInterface interface {
@@ -54,6 +54,11 @@ func (s *fileServer) UploadFile(stream fileservicev1.FileService_UploadFileServe
 	metadata := firstMsg.GetMetadata()
 	if metadata == nil {
 		return status.Error(codes.InvalidArgument, "first message must be metadata")
+	}
+
+	//validate
+	if err := metadata.Validate(); err != nil {
+		return status.Errorf(codes.InvalidArgument, "validation failed: %v", err)
 	}
 
 	// 2. Create file in storage
@@ -122,7 +127,7 @@ func (s *fileServer) DownloadFile(req *fileservicev1.DownloadFileRequest, stream
 	}
 
 	// 3. Open file from storage
-	reader, err := s.storage.ReadFile(file.StoragePath)
+	reader, err := s.storage.ReadFile(file.ID)
 	if err != nil {
 		return status.Error(codes.Internal, "failed to open file")
 	}
@@ -252,7 +257,7 @@ func (fs *fileServer) DeleteFile(ctx context.Context, req *fileservicev1.DeleteF
 	}
 
 	// 4. Delete from storage
-	if err := fs.storage.DeleteFile(file.StoragePath); err != nil {
+	if err := fs.storage.DeleteFile(req.FileId); err != nil {
 		// Log but don't fail — orphaned storage is better than orphaned DB
 		log.Printf("Warning: failed to delete file from storage: %v", err)
 	}

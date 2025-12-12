@@ -29,10 +29,12 @@ func (fs *FilesystemStorage) CreateFile(fileID string) (io.WriteCloser, error) {
 	return os.Create(filePath)
 }
 
-func (fs *FilesystemStorage) ReadFile(path string) (io.ReadCloser, error) {
-	return os.Open(path)
+func (fs *FilesystemStorage) ReadFile(fileID string) (io.ReadCloser, error) {
+	filePath := filepath.Join(fs.basePath, fileID)
+	return os.Open(filePath)
 }
 
-func (fs *FilesystemStorage) DeleteFile(path string) error {
-	return os.Remove(path)
+func (fs *FilesystemStorage) DeleteFile(fileID string) error {
+	filePath := filepath.Join(fs.basePath, fileID)
+	return os.Remove(filePath)
 }
