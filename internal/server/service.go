@@ -45,7 +45,7 @@ func NewFileServer(storage StorageInterface, db DatabaseInterface) *fileServer {
 
 func (s *fileServer) UploadFile(stream fileservicev1.FileService_UploadFileServer) error {
 
-	// 1. Receive first message (metadata)
+	//  . Receive first message (metadata)
 	firstMsg, err := stream.Recv()
 	if err != nil {
 		return status.Error(codes.InvalidArgument, "no metadata received")
@@ -56,12 +56,12 @@ func (s *fileServer) UploadFile(stream fileservicev1.FileService_UploadFileServe
 		return status.Error(codes.InvalidArgument, "first message must be metadata")
 	}
 
-	//validate
+	//validate metadata
 	if err := metadata.Validate(); err != nil {
 		return status.Errorf(codes.InvalidArgument, "validation failed: %v", err)
 	}
 
-	// 2. Create file in storage
+	//  . Create file in storage
 	fileID := uuid.New().String()
 	writer, err := s.storage.CreateFile(fileID)
 	if err != nil {
@@ -69,7 +69,7 @@ func (s *fileServer) UploadFile(stream fileservicev1.FileService_UploadFileServe
 	}
 	defer writer.Close()
 
-	// 3. Stream chunks from client
+	//  . Stream chunks from client
 	totalSize := int64(0)
 	for {
 		msg, err := stream.Recv()
@@ -89,13 +89,13 @@ func (s *fileServer) UploadFile(stream fileservicev1.FileService_UploadFileServe
 	}
 	ctx := context.Background()
 
-	// 4. Save metadata to database
+	//  . Save metadata to database
 	err = s.database.SaveFile(ctx, fileID, metadata, totalSize)
 	if err != nil {
 		return status.Error(codes.Internal, "failed to save metadata")
 	}
 
-	// 5. Send response once
+	//  . Send response once
 	return stream.SendAndClose(&fileservicev1.UploadFileResponse{
 		FileId:   fileID,
 		Filename: metadata.Filename,
@@ -104,14 +104,18 @@ func (s *fileServer) UploadFile(stream fileservicev1.FileService_UploadFileServe
 }
 
 func (s *fileServer) DownloadFile(req *fileservicev1.DownloadFileRequest, stream fileservicev1.FileService_DownloadFileServer) error {
+	// Validate request
+	if err := req.Validate(); err != nil {
+		return status.Errorf(codes.InvalidArgument, "validation failed: %v", err)
+	}
 
-	// 1. Get file metadata
+	//  Get file metadata
 	file, err := s.database.GetFile(stream.Context(), req.FileId)
 	if err != nil {
 		return status.Error(codes.NotFound, "file not found")
 	}
 
-	// 2. Send file info first
+	//  . Send file info first
 	err = stream.Send(&fileservicev1.DownloadFileResponse{
 		Data: &fileservicev1.DownloadFileResponse_Info{
 			Info: &fileservicev1.FileInfo{
@@ -126,14 +130,14 @@ func (s *fileServer) DownloadFile(req *fileservicev1.DownloadFileRequest, stream
 		return err
 	}
 
-	// 3. Open file from storage
+	//  . Open file from storage
 	reader, err := s.storage.ReadFile(file.ID)
 	if err != nil {
 		return status.Error(codes.Internal, "failed to open file")
 	}
 	defer reader.Close()
 
-	// 4. Stream chunks to client
+	//  . Stream chunks to client
 	buffer := make([]byte, 64*1024) // 64KB chunks
 	for {
 		n, err := reader.Read(buffer)
@@ -159,18 +163,18 @@ func (s *fileServer) DownloadFile(req *fileservicev1.DownloadFileRequest, stream
 
 func (s *fileServer) GetFileMetadata(ctx context.Context, req *fileservicev1.GetFileMetadataRequest) (*fileservicev1.GetFileMetadataResponse, error) {
 
-	// 1. Validate input (protovalidate already did basic checks)
-	if req.FileId == "" {
-		return nil, status.Error(codes.InvalidArgument, "file_id required")
+	// Validate request
+	if err := req.Validate(); err != nil {
+		return nil, status.Errorf(codes.InvalidArgument, "validation failed: %v", err)
 	}
 
-	// 2. Query database
+	//  . Query database
 	file, err := s.database.GetFile(ctx, req.FileId)
 	if err != nil {
 		return nil, status.Error(codes.NotFound, "file not found")
 	}
 
-	// 3. Return response
+	//  . Return response
 	return &fileservicev1.GetFileMetadataResponse{
 		FileId:      file.ID,
 		Filename:    file.Name,
@@ -182,12 +186,12 @@ func (s *fileServer) GetFileMetadata(ctx context.Context, req *fileservicev1.Get
 
 // message ListFilesRequest {
 func (fs *fileServer) ListFiles(ctx context.Context, req *fileservicev1.ListFilesRequest) (*fileservicev1.ListFilesResponse, error) {
-	// 1. Basic validation
-	if req.UserId == "" {
-		return nil, status.Error(codes.InvalidArgument, "user_id is required")
+	// Validate request
+	if err := req.Validate(); err != nil {
+		return nil, status.Errorf(codes.InvalidArgument, "validation failed: %v", err)
 	}
 
-	// 2. Set reasonable defaults
+	//  . Set reasonable defaults
 	limit := int(req.PageSize)
 	if limit <= 0 || limit > 100 {
 		limit = 20
@@ -199,14 +203,13 @@ func (fs *fileServer) ListFiles(ctx context.Context, req *fileservicev1.ListFile
 		offset = parsed
 	}
 
-	// 3. Fetch from DB
-	// +1 to check if there's more
+	//  . Fetch from DB ( +1 to check if there's more)
 	records, err := fs.database.ListFiles(ctx, req.UserId, limit+1, offset)
 	if err != nil {
 		return nil, status.Error(codes.Internal, "failed to list files")
 	}
 
-	// 4. Build response
+	//  . Build response
 	var entries []*fileservicev1.FileEntry
 	for i, rec := range records {
 		if i == limit {
@@ -224,7 +227,7 @@ func (fs *fileServer) ListFiles(ctx context.Context, req *fileservicev1.ListFile
 		})
 	}
 
-	// 5. Next page token if needed
+	//  . Next page token if needed
 	nextToken := ""
 	if len(records) > limit {
 		nextToken = strconv.Itoa(offset + limit)
@@ -237,12 +240,12 @@ func (fs *fileServer) ListFiles(ctx context.Context, req *fileservicev1.ListFile
 }
 
 func (fs *fileServer) DeleteFile(ctx context.Context, req *fileservicev1.DeleteFileRequest) (*fileservicev1.DeleteFileResponse, error) {
-	// 1. Basic validation
-	if req.FileId == "" || req.UserId == "" {
-		return nil, status.Error(codes.InvalidArgument, "file_id and user_id required")
+	// Validate request
+	if err := req.Validate(); err != nil {
+		return nil, status.Errorf(codes.InvalidArgument, "validation failed: %v", err)
 	}
 
-	// 2. Delete from storage first (fail-fast if file missing)
+	//  . Delete from storage first (fail-fast if file missing)
 	file, err := fs.database.GetFile(ctx, req.FileId)
 	if err == sql.ErrNoRows {
 		return nil, status.Error(codes.NotFound, "file not found")
@@ -251,18 +254,18 @@ func (fs *fileServer) DeleteFile(ctx context.Context, req *fileservicev1.DeleteF
 		return nil, status.Error(codes.Internal, "database error")
 	}
 
-	// 3. Ownership check
+	//  . Ownership check
 	if file.UserID != req.UserId {
 		return nil, status.Error(codes.PermissionDenied, "not owner")
 	}
 
-	// 4. Delete from storage
+	//  . Delete from storage
 	if err := fs.storage.DeleteFile(req.FileId); err != nil {
 		// Log but don't fail — orphaned storage is better than orphaned DB
 		log.Printf("Warning: failed to delete file from storage: %v", err)
 	}
 
-	// 5. Soft-delete in DB
+	//  . Soft-delete in DB
 	if err := fs.database.DeleteFile(ctx, req.FileId, req.UserId); err != nil {
 		return nil, status.Error(codes.Internal, "failed to delete file metadata")
 	}
