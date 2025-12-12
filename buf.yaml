@@ -26,12 +26,9 @@ lint:
   use:
     # STANDARD: Basic proto syntax, naming, and structure rules
     - STANDARD
-    # COMMENTS: Requires doc comments on services, messages, fields (enforced)
-    - COMMENTS
     # PROTOVALIDATE: Specific rules for validation annotations (e.g., required fields)
     - PROTOVALIDATE
   except:
-    # FIELD_LOWER_SNAKE_CASE: Allow camelCase fields (matches Go conventions)
     - FIELD_LOWER_SNAKE_CASE
-    # PACKAGE_VERSION_SUFFIX: We use 'v1' in package name, not as suffix
     - PACKAGE_VERSION_SUFFIX
+    - COMMENTS                

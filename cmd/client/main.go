@@ -1,4 +1,3 @@
-// cmd/client/main.go
 package main
 
 import (
@@ -6,7 +5,8 @@ import (
 	"fmt"
 	"log"
 
-	v1 "github.com/PaulBabatuyi/UploadStream-gRPC/gen/fileservice/v1"
+	fileservicev1 "github.com/PaulBabatuyi/UploadStream-gRPC/gen/fileservice/v1"
+
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 )
@@ -18,11 +18,11 @@ func main() {
 	defer conn.Close()
 
 	// 2. Create client
-	client := v1.NewFileServiceClient(conn)
+	client := fileservicev1.NewFileServiceClient(conn)
 
 	// 3. Call RPC
 	resp, err := client.GetFileMetadata(context.Background(),
-		&v1.GetFileMetadataRequest{
+		&fileservicev1.GetFileMetadataRequest{
 			FileId: "some-uuid",
 		})
 

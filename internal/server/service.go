@@ -2,20 +2,38 @@ package server
 
 import (
 	"context"
+	"database/sql"
 	"io"
+	"log"
+	"strconv"
 
-	v1 "github.com/PaulBabatuyi/UploadStream-gRPC/gen/proto/fileservice/v1/fileService_grpc.v1.go"
+	fileservicev1 "github.com/PaulBabatuyi/UploadStream-gRPC/gen/fileservice/v1"
+	"github.com/PaulBabatuyi/UploadStream-gRPC/internal/models"
+
 	"github.com/google/uuid"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
-type fileServer struct {
-	v1.UnimplementedFileServiceServer // Embeds for forward compatibility
+type StorageInterface interface {
+	CreateFile(fileID string) (io.WriteCloser, error)
+	ReadFile(path string) (io.ReadCloser, error)
+	DeleteFile(path string) error
+}
 
-	storage  StorageInterface  // Where files are stored
-	database DatabaseInterface // Where metadata is stored
+type DatabaseInterface interface {
+	SaveFile(ctx context.Context, fileID string, metadata *fileservicev1.FileMetadata, size int64) error
+	GetFile(ctx context.Context, fileID string) (*models.FileRecord, error)
+	ListFiles(ctx context.Context, userID string, limit int, offset int) ([]*models.FileRecord, error)
+	DeleteFile(ctx context.Context, fileID, userID string) error
+}
+
+type fileServer struct {
+	fileservicev1.UnimplementedFileServiceServer
+
+	storage  StorageInterface
+	database DatabaseInterface
 }
 
 func NewFileServer(storage StorageInterface, db DatabaseInterface) *fileServer {
@@ -25,7 +43,7 @@ func NewFileServer(storage StorageInterface, db DatabaseInterface) *fileServer {
 	}
 }
 
-func (s *fileServer) UploadFile(stream v1.FileService_UploadFileServer) error {
+func (s *fileServer) UploadFile(stream fileservicev1.FileService_UploadFileServer) error {
 
 	// 1. Receive first message (metadata)
 	firstMsg, err := stream.Recv()
@@ -73,14 +91,14 @@ func (s *fileServer) UploadFile(stream v1.FileService_UploadFileServer) error {
 	}
 
 	// 5. Send response once
-	return stream.SendAndClose(&v1.UploadFileResponse{
+	return stream.SendAndClose(&fileservicev1.UploadFileResponse{
 		FileId:   fileID,
 		Filename: metadata.Filename,
 		Size:     totalSize,
 	})
 }
 
-func (s *fileServer) DownloadFile(req *v1.DownloadFileRequest, stream v1.FileService_DownloadFileServer) error {
+func (s *fileServer) DownloadFile(req *fileservicev1.DownloadFileRequest, stream fileservicev1.FileService_DownloadFileServer) error {
 
 	// 1. Get file metadata
 	file, err := s.database.GetFile(stream.Context(), req.FileId)
@@ -89,9 +107,9 @@ func (s *fileServer) DownloadFile(req *v1.DownloadFileRequest, stream v1.FileSer
 	}
 
 	// 2. Send file info first
-	err = stream.Send(&v1.DownloadFileResponse{
-		Data: &v1.DownloadFileResponse_Info{
-			Info: &v1.FileInfo{
+	err = stream.Send(&fileservicev1.DownloadFileResponse{
+		Data: &fileservicev1.DownloadFileResponse_Info{
+			Info: &fileservicev1.FileInfo{
 				FileId:      file.ID,
 				Filename:    file.Name,
 				ContentType: file.ContentType,
@@ -121,8 +139,8 @@ func (s *fileServer) DownloadFile(req *v1.DownloadFileRequest, stream v1.FileSer
 			return status.Error(codes.Internal, "failed to read file")
 		}
 
-		err = stream.Send(&v1.DownloadFileResponse{
-			Data: &v1.DownloadFileResponse_Chunk{
+		err = stream.Send(&fileservicev1.DownloadFileResponse{
+			Data: &fileservicev1.DownloadFileResponse_Chunk{
 				Chunk: buffer[:n],
 			},
 		})
@@ -134,7 +152,7 @@ func (s *fileServer) DownloadFile(req *v1.DownloadFileRequest, stream v1.FileSer
 	return nil
 }
 
-func (s *fileServer) GetFileMetadata(ctx context.Context, req *v1.GetFileMetadataRequest) (*v1.GetFileMetadataResponse, error) {
+func (s *fileServer) GetFileMetadata(ctx context.Context, req *fileservicev1.GetFileMetadataRequest) (*fileservicev1.GetFileMetadataResponse, error) {
 
 	// 1. Validate input (protovalidate already did basic checks)
 	if req.FileId == "" {
@@ -148,7 +166,7 @@ func (s *fileServer) GetFileMetadata(ctx context.Context, req *v1.GetFileMetadat
 	}
 
 	// 3. Return response
-	return &v1.GetFileMetadataResponse{
+	return &fileservicev1.GetFileMetadataResponse{
 		FileId:      file.ID,
 		Filename:    file.Name,
 		ContentType: file.ContentType,
@@ -157,9 +175,95 @@ func (s *fileServer) GetFileMetadata(ctx context.Context, req *v1.GetFileMetadat
 	}, nil
 }
 
-func (fs fileServer) ListFiles(ctx context.Context, req *v1.ListFilesRequest) (*v1.ListFilesResponse, error) {
-	return nil, nil
+// message ListFilesRequest {
+func (fs *fileServer) ListFiles(ctx context.Context, req *fileservicev1.ListFilesRequest) (*fileservicev1.ListFilesResponse, error) {
+	// 1. Basic validation
+	if req.UserId == "" {
+		return nil, status.Error(codes.InvalidArgument, "user_id is required")
+	}
+
+	// 2. Set reasonable defaults
+	limit := int(req.PageSize)
+	if limit <= 0 || limit > 100 {
+		limit = 20
+	}
+	offset := 0
+	if req.PageToken != "" {
+		// Simple integer offset encoded as string (i will upgrade to base64 cursor later
+		parsed, _ := strconv.Atoi(req.PageToken)
+		offset = parsed
+	}
+
+	// 3. Fetch from DB
+	// +1 to check if there's more
+	records, err := fs.database.ListFiles(ctx, req.UserId, limit+1, offset)
+	if err != nil {
+		return nil, status.Error(codes.Internal, "failed to list files")
+	}
+
+	// 4. Build response
+	var entries []*fileservicev1.FileEntry
+	for i, rec := range records {
+		if i == limit {
+			// this is the "has more" marker
+			break
+		}
+		entries = append(entries, &fileservicev1.FileEntry{
+			FileId:      rec.ID,
+			Filename:    rec.Name,
+			ContentType: rec.ContentType,
+			Size:        rec.Size,
+			UploadedAt:  timestamppb.New(rec.UploadedAt),
+			// placeholder for now
+			ProcessingStatus: fileservicev1.ProcessingStatus_PROCESSING_STATUS_COMPLETED,
+		})
+	}
+
+	// 5. Next page token if needed
+	nextToken := ""
+	if len(records) > limit {
+		nextToken = strconv.Itoa(offset + limit)
+	}
+
+	return &fileservicev1.ListFilesResponse{
+		Files:         entries,
+		NextPageToken: nextToken,
+	}, nil
 }
-func (fs fileServer) DeleteFile(ctx context.Context, req *v1.DeleteFileRequest) (*v1.DeleteFileResponse, error) {
-	return nil, nil
+
+func (fs *fileServer) DeleteFile(ctx context.Context, req *fileservicev1.DeleteFileRequest) (*fileservicev1.DeleteFileResponse, error) {
+	// 1. Basic validation
+	if req.FileId == "" || req.UserId == "" {
+		return nil, status.Error(codes.InvalidArgument, "file_id and user_id required")
+	}
+
+	// 2. Delete from storage first (fail-fast if file missing)
+	file, err := fs.database.GetFile(ctx, req.FileId)
+	if err == sql.ErrNoRows {
+		return nil, status.Error(codes.NotFound, "file not found")
+	}
+	if err != nil {
+		return nil, status.Error(codes.Internal, "database error")
+	}
+
+	// 3. Ownership check
+	if file.UserID != req.UserId {
+		return nil, status.Error(codes.PermissionDenied, "not owner")
+	}
+
+	// 4. Delete from storage
+	if err := fs.storage.DeleteFile(file.StoragePath); err != nil {
+		// Log but don't fail — orphaned storage is better than orphaned DB
+		log.Printf("Warning: failed to delete file from storage: %v", err)
+	}
+
+	// 5. Soft-delete in DB
+	if err := fs.database.DeleteFile(ctx, req.FileId, req.UserId); err != nil {
+		return nil, status.Error(codes.Internal, "failed to delete file metadata")
+	}
+
+	return &fileservicev1.DeleteFileResponse{
+		Success: true,
+		Message: "file deleted",
+	}, nil
 }

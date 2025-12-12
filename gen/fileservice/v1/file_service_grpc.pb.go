@@ -2,7 +2,7 @@
 // versions:
 // - protoc-gen-go-grpc v1.5.1
 // - protoc             (unknown)
-// source: proto/fileservice/v1/fileService.proto
+// source: fileservice/v1/file_service.proto
 
 // Package name for the service — follows Buf best practices
 
@@ -280,5 +280,5 @@ var FileService_ServiceDesc = grpc.ServiceDesc{
 			ServerStreams: true,
 		},
 	},
-	Metadata: "proto/fileservice/v1/fileService.proto",
+	Metadata: "fileservice/v1/file_service.proto",
 }
