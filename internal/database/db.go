@@ -6,16 +6,8 @@ import (
 	"time"
 
 	fileservicev1 "github.com/PaulBabatuyi/UploadStream-gRPC/gen/fileservice/v1"
-	"github.com/PaulBabatuyi/UploadStream-gRPC/internal/models"
 	_ "github.com/lib/pq"
 )
-
-type DatabaseInterface interface {
-	SaveFile(ctx context.Context, fileID string, metadata *fileservicev1.FileMetadata, size int64) error
-	GetFile(ctx context.Context, fileID string) (*models.FileRecord, error)
-	ListFiles(ctx context.Context, userID string, limit int, offset int) ([]*models.FileRecord, error)
-	DeleteFile(ctx context.Context, fileID, userID string) error
-}
 
 type PostgresDB struct {
 	db *sql.DB
@@ -54,14 +46,14 @@ func (p *PostgresDB) SaveFile(ctx context.Context, fileID string, metadata *file
 	return err
 }
 
-func (p *PostgresDB) GetFile(ctx context.Context, fileID string) (*models.FileRecord, error) {
+func (p *PostgresDB) GetFile(ctx context.Context, fileID string) (*FileRecord, error) {
 	query := `
         SELECT id, user_id, filename, content_type, size, storage_path, uploaded_at, deleted_at
         FROM files
         WHERE id = $1 AND deleted_at IS NULL
     `
 
-	var file models.FileRecord
+	var file FileRecord
 	err := p.db.QueryRowContext(ctx, query, fileID).Scan(
 		&file.ID,
 		&file.UserID,
@@ -80,7 +72,7 @@ func (p *PostgresDB) GetFile(ctx context.Context, fileID string) (*models.FileRe
 	return &file, err
 }
 
-func (p *PostgresDB) ListFiles(ctx context.Context, userID string, limit, offset int) ([]*models.FileRecord, error) {
+func (p *PostgresDB) ListFiles(ctx context.Context, userID string, limit, offset int) ([]*FileRecord, error) {
 	query := `
         SELECT id, user_id, filename, content_type, size, storage_path, uploaded_at
         FROM files
@@ -94,9 +86,9 @@ func (p *PostgresDB) ListFiles(ctx context.Context, userID string, limit, offset
 	}
 	defer rows.Close()
 
-	var files []*models.FileRecord
+	var files []*FileRecord
 	for rows.Next() {
-		var f models.FileRecord
+		var f FileRecord
 		if err := rows.Scan(&f.ID, &f.UserID, &f.Name, &f.ContentType, &f.Size, &f.StoragePath, &f.UploadedAt); err != nil {
 			return nil, err
 		}

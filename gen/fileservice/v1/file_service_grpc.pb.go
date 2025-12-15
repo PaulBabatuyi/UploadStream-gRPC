@@ -128,7 +128,7 @@ type FileServiceServer interface {
 	DownloadFile(*DownloadFileRequest, grpc.ServerStreamingServer[DownloadFileResponse]) error
 	// Get file metadata
 	GetFileMetadata(context.Context, *GetFileMetadataRequest) (*GetFileMetadataResponse, error)
-	// List user's files
+	// List user'         files
 	ListFiles(context.Context, *ListFilesRequest) (*ListFilesResponse, error)
 	// Delete a file
 	DeleteFile(context.Context, *DeleteFileRequest) (*DeleteFileResponse, error)

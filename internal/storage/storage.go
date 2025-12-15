@@ -6,16 +6,9 @@ import (
 	"path/filepath"
 )
 
-// StorageInterface defines how we store files
-type StorageInterface interface {
-	CreateFile(fileID string) (io.WriteCloser, error)
-	ReadFile(path string) (io.ReadCloser, error)
-	DeleteFile(path string) error
-}
-
 // FilesystemStorage stores files on local disk
 type FilesystemStorage struct {
-	basePath string // e.g., "./data/files"
+	basePath string //  "./data/files"
 }
 
 func NewFilesystemStorage(basePath string) *FilesystemStorage {

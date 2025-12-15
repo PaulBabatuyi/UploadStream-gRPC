@@ -8,7 +8,7 @@ import (
 	fileservicev1 "github.com/PaulBabatuyi/UploadStream-gRPC/gen/fileservice/v1"
 
 	"github.com/PaulBabatuyi/UploadStream-gRPC/internal/database"
-	"github.com/PaulBabatuyi/UploadStream-gRPC/internal/server"
+	"github.com/PaulBabatuyi/UploadStream-gRPC/internal/service"
 	"github.com/PaulBabatuyi/UploadStream-gRPC/internal/storage"
 	"google.golang.org/grpc"
 )
@@ -34,7 +34,7 @@ func main() {
 	grpcServer := grpc.NewServer()
 
 	// 4. Create and register your service
-	fileServer := server.NewFileServer(storageLayer, db)
+	fileServer := service.NewFileServer(storageLayer, db)
 	fileservicev1.RegisterFileServiceServer(grpcServer, fileServer)
 	log.Println("✓ FileService registered")
 
