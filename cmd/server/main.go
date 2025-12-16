@@ -5,7 +5,7 @@ import (
 	"net"
 	"os"
 
-	fileservicev1 "github.com/PaulBabatuyi/UploadStream-gRPC/gen/fileservice/v1"
+	pbv1 "github.com/PaulBabatuyi/UploadStream-gRPC/gen/fileservice/v1"
 
 	"github.com/PaulBabatuyi/UploadStream-gRPC/internal/database"
 	"github.com/PaulBabatuyi/UploadStream-gRPC/internal/service"
@@ -35,7 +35,7 @@ func main() {
 
 	// 4. Create and register your service
 	fileServer := service.NewFileServer(storageLayer, db)
-	fileservicev1.RegisterFileServiceServer(grpcServer, fileServer)
+	pbv1.RegisterFileServiceServer(grpcServer, fileServer)
 	log.Println("✓ FileService registered")
 
 	// 5. Listen and serve

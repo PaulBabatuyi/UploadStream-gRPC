@@ -3,4 +3,4 @@
 .sql
 idea.html
 propose.sql
-gen/*
+gen/fileservice/v1/**

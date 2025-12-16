@@ -7,8 +7,7 @@ import (
 	"log"
 	"strconv"
 
-	fileservicev1 "github.com/PaulBabatuyi/UploadStream-gRPC/gen/fileservice/v1"
-
+	pbv1 "github.com/PaulBabatuyi/UploadStream-gRPC/gen/fileservice/v1"
 	"github.com/google/uuid"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -22,7 +21,7 @@ func NewFileServer(storage StorageInterface, db DatabaseInterface) *fileServer {
 	}
 }
 
-func (s *fileServer) UploadFile(stream fileservicev1.FileService_UploadFileServer) error {
+func (s *fileServer) UploadFile(stream pbv1.FileService_UploadFileServer) error {
 
 	//  . Receive first message (metadata)
 	firstMsg, err := stream.Recv()
@@ -75,14 +74,14 @@ func (s *fileServer) UploadFile(stream fileservicev1.FileService_UploadFileServe
 	}
 
 	//  . Send response once
-	return stream.SendAndClose(&fileservicev1.UploadFileResponse{
+	return stream.SendAndClose(&pbv1.UploadFileResponse{
 		FileId:   fileID,
 		Filename: metadata.Filename,
 		Size:     totalSize,
 	})
 }
 
-func (s *fileServer) DownloadFile(req *fileservicev1.DownloadFileRequest, stream fileservicev1.FileService_DownloadFileServer) error {
+func (s *fileServer) DownloadFile(req *pbv1.DownloadFileRequest, stream pbv1.FileService_DownloadFileServer) error {
 	// Validate request
 	if err := req.Validate(); err != nil {
 		return status.Errorf(codes.InvalidArgument, "validation failed: %v", err)
@@ -95,9 +94,9 @@ func (s *fileServer) DownloadFile(req *fileservicev1.DownloadFileRequest, stream
 	}
 
 	//  . Send file info first
-	err = stream.Send(&fileservicev1.DownloadFileResponse{
-		Data: &fileservicev1.DownloadFileResponse_Info{
-			Info: &fileservicev1.FileInfo{
+	err = stream.Send(&pbv1.DownloadFileResponse{
+		Data: &pbv1.DownloadFileResponse_Info{
+			Info: &pbv1.FileInfo{
 				FileId:      file.ID,
 				Filename:    file.Name,
 				ContentType: file.ContentType,
@@ -127,8 +126,8 @@ func (s *fileServer) DownloadFile(req *fileservicev1.DownloadFileRequest, stream
 			return status.Error(codes.Internal, "failed to read file")
 		}
 
-		err = stream.Send(&fileservicev1.DownloadFileResponse{
-			Data: &fileservicev1.DownloadFileResponse_Chunk{
+		err = stream.Send(&pbv1.DownloadFileResponse{
+			Data: &pbv1.DownloadFileResponse_Chunk{
 				Chunk: buffer[:n],
 			},
 		})
@@ -140,7 +139,7 @@ func (s *fileServer) DownloadFile(req *fileservicev1.DownloadFileRequest, stream
 	return nil
 }
 
-func (s *fileServer) GetFileMetadata(ctx context.Context, req *fileservicev1.GetFileMetadataRequest) (*fileservicev1.GetFileMetadataResponse, error) {
+func (s *fileServer) GetFileMetadata(ctx context.Context, req *pbv1.GetFileMetadataRequest) (*pbv1.GetFileMetadataResponse, error) {
 
 	// Validate request
 	if err := req.Validate(); err != nil {
@@ -154,7 +153,7 @@ func (s *fileServer) GetFileMetadata(ctx context.Context, req *fileservicev1.Get
 	}
 
 	//  . Return response
-	return &fileservicev1.GetFileMetadataResponse{
+	return &pbv1.GetFileMetadataResponse{
 		FileId:      file.ID,
 		Filename:    file.Name,
 		ContentType: file.ContentType,
@@ -164,7 +163,7 @@ func (s *fileServer) GetFileMetadata(ctx context.Context, req *fileservicev1.Get
 }
 
 // message ListFilesRequest {
-func (fs *fileServer) ListFiles(ctx context.Context, req *fileservicev1.ListFilesRequest) (*fileservicev1.ListFilesResponse, error) {
+func (fs *fileServer) ListFiles(ctx context.Context, req *pbv1.ListFilesRequest) (*pbv1.ListFilesResponse, error) {
 	// Validate request
 	if err := req.Validate(); err != nil {
 		return nil, status.Errorf(codes.InvalidArgument, "validation failed: %v", err)
@@ -189,20 +188,20 @@ func (fs *fileServer) ListFiles(ctx context.Context, req *fileservicev1.ListFile
 	}
 
 	//  . Build response
-	var entries []*fileservicev1.FileEntry
+	var entries []*pbv1.FileEntry
 	for i, rec := range records {
 		if i == limit {
 			// this is the "has more" marker
 			break
 		}
-		entries = append(entries, &fileservicev1.FileEntry{
+		entries = append(entries, &pbv1.FileEntry{
 			FileId:      rec.ID,
 			Filename:    rec.Name,
 			ContentType: rec.ContentType,
 			Size:        rec.Size,
 			UploadedAt:  timestamppb.New(rec.UploadedAt),
 			// placeholder for now
-			ProcessingStatus: fileservicev1.ProcessingStatus_PROCESSING_STATUS_COMPLETED,
+			ProcessingStatus: pbv1.ProcessingStatus_PROCESSING_STATUS_COMPLETED,
 		})
 	}
 
@@ -212,13 +211,13 @@ func (fs *fileServer) ListFiles(ctx context.Context, req *fileservicev1.ListFile
 		nextToken = strconv.Itoa(offset + limit)
 	}
 
-	return &fileservicev1.ListFilesResponse{
+	return &pbv1.ListFilesResponse{
 		Files:         entries,
 		NextPageToken: nextToken,
 	}, nil
 }
 
-func (fs *fileServer) DeleteFile(ctx context.Context, req *fileservicev1.DeleteFileRequest) (*fileservicev1.DeleteFileResponse, error) {
+func (fs *fileServer) DeleteFile(ctx context.Context, req *pbv1.DeleteFileRequest) (*pbv1.DeleteFileResponse, error) {
 	// Validate request
 	if err := req.Validate(); err != nil {
 		return nil, status.Errorf(codes.InvalidArgument, "validation failed: %v", err)
@@ -249,7 +248,7 @@ func (fs *fileServer) DeleteFile(ctx context.Context, req *fileservicev1.DeleteF
 		return nil, status.Error(codes.Internal, "failed to delete file metadata")
 	}
 
-	return &fileservicev1.DeleteFileResponse{
+	return &pbv1.DeleteFileResponse{
 		Success: true,
 		Message: "file deleted",
 	}, nil

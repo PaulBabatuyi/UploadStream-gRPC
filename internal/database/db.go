@@ -5,7 +5,7 @@ import (
 	"database/sql"
 	"time"
 
-	fileservicev1 "github.com/PaulBabatuyi/UploadStream-gRPC/gen/fileservice/v1"
+	pbv1 "github.com/PaulBabatuyi/UploadStream-gRPC/gen/fileservice/v1"
 	_ "github.com/lib/pq"
 )
 
@@ -27,7 +27,7 @@ func NewPostgresDB(connectionString string) (*PostgresDB, error) {
 	return &PostgresDB{db: db}, nil
 }
 
-func (p *PostgresDB) SaveFile(ctx context.Context, fileID string, metadata *fileservicev1.FileMetadata, size int64) error {
+func (p *PostgresDB) SaveFile(ctx context.Context, fileID string, metadata *pbv1.FileMetadata, size int64) error {
 	query := `
         INSERT INTO files (id, user_id, filename, content_type, size, storage_path, uploaded_at, deleted_at)
         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
