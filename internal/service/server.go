@@ -17,8 +17,8 @@ type fileServer struct {
 
 type StorageInterface interface {
 	CreateFile(fileID string) (io.WriteCloser, error)
-	ReadFile(path string) (io.ReadCloser, error)
-	DeleteFile(path string) error
+	ReadFile(fileID string) (io.ReadCloser, error)
+	DeleteFile(fileID string) error
 }
 
 type DatabaseInterface interface {

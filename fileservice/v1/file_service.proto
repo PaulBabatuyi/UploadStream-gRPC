@@ -1,6 +1,6 @@
 syntax = "proto3";
 
-// Package name for the service — follows Buf best practices
+// Package name for the service 
 package fileservice.v1;
 
 // Protovalidate annotations for server-side validation
@@ -41,7 +41,7 @@ message UploadFileRequest {
 
 // Metadata sent in the very first UploadFileRequest message
 message FileMetadata {
-  // Original filename (e.g., "vacation.jpg")
+  // Original filename 
   string filename = 1 [(buf.validate.field).string = {
     min_len: 1
     max_len: 255

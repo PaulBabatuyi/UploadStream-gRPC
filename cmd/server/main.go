@@ -8,17 +8,18 @@ import (
 	pbv1 "github.com/PaulBabatuyi/UploadStream-gRPC/gen/fileservice/v1"
 
 	"github.com/PaulBabatuyi/UploadStream-gRPC/internal/database"
+	"github.com/PaulBabatuyi/UploadStream-gRPC/internal/middleware"
 	"github.com/PaulBabatuyi/UploadStream-gRPC/internal/service"
 	"github.com/PaulBabatuyi/UploadStream-gRPC/internal/storage"
 	"google.golang.org/grpc"
 )
 
 func main() {
-	// 1. Initialize storage
+	//  Initialize storage
 	storageLayer := storage.NewFilesystemStorage("./data/files")
 	log.Println("✓ Filesystem storage initialized")
 
-	// 2. Initialize database
+	// Initialize database
 	dbURL := os.Getenv("UPLOADSTREAM")
 	if dbURL == "" {
 		panic("UPLOADSTREAM env var is required")
@@ -30,15 +31,17 @@ func main() {
 	}
 	log.Println("✓ Database connected")
 
-	// 3. Create gRPC server
-	grpcServer := grpc.NewServer()
-
-	// 4. Create and register your service
+	// Create gRPC server
+	grpcServer := grpc.NewServer(
+		grpc.UnaryInterceptor(middleware.AuthInterceptor),
+		grpc.StreamInterceptor(middleware.StreamAuthInterceptor),
+	)
+	//  Create and register your service
 	fileServer := service.NewFileServer(storageLayer, db)
 	pbv1.RegisterFileServiceServer(grpcServer, fileServer)
 	log.Println("✓ FileService registered")
 
-	// 5. Listen and serve
+	//  Listen and serve
 	lis, err := net.Listen("tcp", ":50051")
 	if err != nil {
 		log.Fatal("Failed to listen:", err)

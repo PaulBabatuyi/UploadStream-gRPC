@@ -11,6 +11,7 @@ import (
 	pbv1 "github.com/PaulBabatuyi/UploadStream-gRPC/gen/fileservice/v1"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/metadata"
 )
 
 const (
@@ -24,7 +25,10 @@ type FileClient struct {
 
 func NewFileClient(addr string) (*FileClient, error) {
 	conn, err := grpc.NewClient(addr,
-		grpc.WithTransportCredentials(insecure.NewCredentials()))
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithUnaryInterceptor(clientAuthInterceptor),
+		grpc.WithStreamInterceptor(clientStreamAuthInterceptor),
+	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect: %w", err)
 	}
@@ -34,28 +38,52 @@ func NewFileClient(addr string) (*FileClient, error) {
 	}, nil
 }
 
+func clientAuthInterceptor(
+	ctx context.Context,
+	method string,
+	req, reply interface{},
+	cc *grpc.ClientConn,
+	invoker grpc.UnaryInvoker,
+	opts ...grpc.CallOption,
+) error {
+	ctx = metadata.AppendToOutgoingContext(ctx, "api-key", "dev-key-123")
+	return invoker(ctx, method, req, reply, cc, opts...)
+}
+
+func clientStreamAuthInterceptor(
+	ctx context.Context,
+	desc *grpc.StreamDesc,
+	cc *grpc.ClientConn,
+	method string,
+	streamer grpc.Streamer,
+	opts ...grpc.CallOption,
+) (grpc.ClientStream, error) {
+	ctx = metadata.AppendToOutgoingContext(ctx, "api-key", "dev-key-123")
+	return streamer(ctx, desc, cc, method, opts...)
+}
+
 // UploadFile streams a file to the server
 func (fc *FileClient) UploadFile(ctx context.Context, filePath, userID string) (*pbv1.UploadFileResponse, error) {
-	// 1. Open file
+	//  Open file
 	file, err := os.Open(filePath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open file: %w", err)
 	}
 	defer file.Close()
 
-	// 2. Get file info
+	//  Get file info
 	fileInfo, err := file.Stat()
 	if err != nil {
 		return nil, fmt.Errorf("failed to stat file: %w", err)
 	}
 
-	// 3. Create upload stream
+	// Create upload stream
 	stream, err := fc.client.UploadFile(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create stream: %w", err)
 	}
 
-	// 4. Send metadata first
+	//  Send metadata first
 	metadata := &pbv1.FileMetadata{
 		Filename:    fileInfo.Name(),
 		ContentType: detectContentType(filePath),
@@ -72,7 +100,7 @@ func (fc *FileClient) UploadFile(ctx context.Context, filePath, userID string) (
 		return nil, fmt.Errorf("failed to send metadata: %w", err)
 	}
 
-	// 5. Stream file chunks
+	//  Stream file chunks
 	buffer := make([]byte, chunkSize)
 	totalSent := int64(0)
 
@@ -98,9 +126,9 @@ func (fc *FileClient) UploadFile(ctx context.Context, filePath, userID string) (
 		progress := float64(totalSent) / float64(fileInfo.Size()) * 100
 		fmt.Printf("\rUploading: %.2f%%", progress)
 	}
-	fmt.Println() // New line after progress
+	fmt.Println()
 
-	// 6. Close stream and get response
+	// Close stream and get response
 	resp, err := stream.CloseAndRecv()
 	if err != nil {
 		return nil, fmt.Errorf("failed to receive response: %w", err)
@@ -111,7 +139,7 @@ func (fc *FileClient) UploadFile(ctx context.Context, filePath, userID string) (
 
 // DownloadFile streams a file from the server
 func (fc *FileClient) DownloadFile(ctx context.Context, fileID, outputPath string) error {
-	// 1. Create download stream
+	// Create download stream
 	stream, err := fc.client.DownloadFile(ctx, &pbv1.DownloadFileRequest{
 		FileId: fileID,
 	})
@@ -119,7 +147,7 @@ func (fc *FileClient) DownloadFile(ctx context.Context, fileID, outputPath strin
 		return fmt.Errorf("failed to create stream: %w", err)
 	}
 
-	// 2. Receive first message (file info)
+	//  Receive first message (file info)
 	firstMsg, err := stream.Recv()
 	if err != nil {
 		return fmt.Errorf("failed to receive file info: %w", err)
@@ -132,14 +160,14 @@ func (fc *FileClient) DownloadFile(ctx context.Context, fileID, outputPath strin
 
 	fmt.Printf("Downloading: %s (%d bytes)\n", fileInfo.Filename, fileInfo.Size)
 
-	// 3. Create output file
+	//  Create output file
 	outFile, err := os.Create(outputPath)
 	if err != nil {
 		return fmt.Errorf("failed to create output file: %w", err)
 	}
 	defer outFile.Close()
 
-	// 4. Receive chunks and write to file
+	//  Receive chunks and write to file
 	totalReceived := int64(0)
 	for {
 		msg, err := stream.Recv()
@@ -224,7 +252,6 @@ func detectContentType(filePath string) string {
 	}
 }
 
-// Example usage demonstrating all operations
 func main() {
 	// Create client
 	client, err := NewFileClient(serverAddr)
@@ -233,7 +260,7 @@ func main() {
 	}
 
 	ctx := context.Background()
-	userID := "550e8400-e29b-41d4-a716-446655440000" // Example UUID
+	userID := "550e8400-e29b-41d4-a716-446655440000" //
 
 	// Example 1: Upload a file
 	fmt.Println("=== Uploading File ===")
