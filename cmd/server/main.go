@@ -1,9 +1,13 @@
 package main
 
 import (
+	"context"
 	"log"
 	"net"
 	"os"
+	"os/signal"
+	"syscall"
+	"time"
 
 	pbv1 "github.com/PaulBabatuyi/UploadStream-gRPC/gen/fileservice/v1"
 
@@ -11,6 +15,7 @@ import (
 	"github.com/PaulBabatuyi/UploadStream-gRPC/internal/middleware"
 	"github.com/PaulBabatuyi/UploadStream-gRPC/internal/service"
 	"github.com/PaulBabatuyi/UploadStream-gRPC/internal/storage"
+	"github.com/PaulBabatuyi/UploadStream-gRPC/internal/worker"
 	"google.golang.org/grpc"
 )
 
@@ -31,12 +36,21 @@ func main() {
 	}
 	log.Println("✓ Database connected")
 
+	// : Start background worker
+	workerConfig := &worker.WorkerConfig{
+		DB:           db,
+		StoragePath:  "./data/files",
+		PollInterval: 2 * time.Second,
+	}
+	processingWorker := worker.NewProcessingWorker(workerConfig)
+	processingWorker.Start(context.Background())
+
 	// Create gRPC server
 	grpcServer := grpc.NewServer(
-		grpc.UnaryInterceptor(middleware.AuthInterceptor),
+		grpc.UnaryInterceptor(middleware.UnaryAuthInterceptor),
 		grpc.StreamInterceptor(middleware.StreamAuthInterceptor),
 	)
-	//  Create and register your service
+	//  register  service
 	fileServer := service.NewFileServer(storageLayer, db)
 	pbv1.RegisterFileServiceServer(grpcServer, fileServer)
 	log.Println("✓ FileService registered")
@@ -46,9 +60,21 @@ func main() {
 	if err != nil {
 		log.Fatal("Failed to listen:", err)
 	}
-
 	log.Println(" Server listening on :50051")
+
+	// Graceful shutdown
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
+
+	go func() {
+		<-sigChan
+		log.Println("\n Shutting down...")
+		processingWorker.Stop()
+		grpcServer.GracefulStop()
+	}()
+
 	if err := grpcServer.Serve(lis); err != nil {
 		log.Fatal("Failed to serve:", err)
 	}
+
 }

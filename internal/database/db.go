@@ -19,7 +19,6 @@ func NewPostgresDB(connectionString string) (*PostgresDB, error) {
 		return nil, err
 	}
 
-	// Test connection
 	if err := db.Ping(); err != nil {
 		return nil, err
 	}
@@ -28,9 +27,11 @@ func NewPostgresDB(connectionString string) (*PostgresDB, error) {
 }
 
 func (p *PostgresDB) SaveFile(ctx context.Context, fileID string, metadata *pbv1.FileMetadata, size int64) error {
+	fileType := DeriveFileType(metadata.ContentType)
+
 	query := `
-        INSERT INTO files (id, user_id, filename, content_type, size, storage_path, uploaded_at, deleted_at)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+        INSERT INTO files (id, user_id, filename, content_type, size, storage_path, uploaded_at, file_type, deleted_at)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
     `
 	_, err := p.db.ExecContext(ctx, query,
 		fileID,
@@ -40,9 +41,9 @@ func (p *PostgresDB) SaveFile(ctx context.Context, fileID string, metadata *pbv1
 		size,
 		fileID,
 		time.Now(),
+		string(fileType),
 		nil,
 	)
-
 	return err
 }
 
@@ -66,7 +67,7 @@ func (p *PostgresDB) GetFile(ctx context.Context, fileID string) (*FileRecord, e
 	)
 
 	if err == sql.ErrNoRows {
-		return nil, err // File not found
+		return nil, err
 	}
 
 	return &file, err
@@ -112,4 +113,70 @@ func (p *PostgresDB) DeleteFile(ctx context.Context, fileID, userID string) erro
 		return sql.ErrNoRows
 	}
 	return nil
+}
+
+func (p *PostgresDB) CreateProcessingJob(ctx context.Context, fileID string) (int64, error) {
+	var jobID int64
+	query := `
+        INSERT INTO processing_jobs (file_id, status, retry_count, max_retries)
+        VALUES ($1, 'pending', 0, 3)
+        RETURNING id
+    `
+	err := p.db.QueryRowContext(ctx, query, fileID).Scan(&jobID)
+	return jobID, err
+}
+
+func (p *PostgresDB) GetNextPendingJob(ctx context.Context) (*ProcessingJob, error) {
+	query := `
+        SELECT id, file_id, status, retry_count, max_retries, error_message
+        FROM processing_jobs
+        WHERE status = 'pending' AND retry_count < max_retries
+        ORDER BY created_at ASC
+        LIMIT 1
+        FOR UPDATE SKIP LOCKED
+    `
+	var job ProcessingJob
+	err := p.db.QueryRowContext(ctx, query).Scan(
+		&job.ID, &job.FileID, &job.Status, &job.RetryCount, &job.MaxRetries, &job.ErrorMessage,
+	)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	return &job, err
+}
+
+func (p *PostgresDB) UpdateJobStatus(ctx context.Context, jobID int64, status, errorMsg string) error {
+	query := `
+        UPDATE processing_jobs
+        SET status = $1, error_message = $2, retry_count = retry_count + 1, updated_at = NOW()
+        WHERE id = $3
+    `
+	_, err := p.db.ExecContext(ctx, query, status, errorMsg, jobID)
+	return err
+}
+
+func (p *PostgresDB) CompleteJob(ctx context.Context, jobID int64, thumbSmall, thumbMed, thumbLarge string, width, height int) error {
+	query := `
+        UPDATE processing_jobs
+        SET status = 'completed', thumbnail_small = $1, thumbnail_medium = $2, thumbnail_large = $3,
+            original_width = $4, original_height = $5, completed_at = NOW(), updated_at = NOW()
+        WHERE id = $6
+    `
+	_, err := p.db.ExecContext(ctx, query, thumbSmall, thumbMed, thumbLarge, width, height, jobID)
+	return err
+}
+
+func (p *PostgresDB) GetJobByFileID(ctx context.Context, fileID string) (*ProcessingJob, error) {
+	query := `
+        SELECT id, file_id, status, error_message, thumbnail_small, thumbnail_medium, thumbnail_large,
+               original_width, original_height
+        FROM processing_jobs
+        WHERE file_id = $1
+    `
+	var job ProcessingJob
+	err := p.db.QueryRowContext(ctx, query, fileID).Scan(
+		&job.ID, &job.FileID, &job.Status, &job.ErrorMessage, &job.ThumbnailSmall, &job.ThumbnailMedium,
+		&job.ThumbnailLarge, &job.OriginalWidth, &job.OriginalHeight,
+	)
+	return &job, err
 }

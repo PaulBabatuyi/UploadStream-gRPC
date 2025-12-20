@@ -23,7 +23,7 @@ func NewFileServer(storage StorageInterface, db DatabaseInterface) *fileServer {
 
 func (s *fileServer) UploadFile(stream pbv1.FileService_UploadFileServer) error {
 
-	//  . Receive first message (metadata)
+	// Receive first message
 	firstMsg, err := stream.Recv()
 	if err != nil {
 		return status.Error(codes.InvalidArgument, "no metadata received")
@@ -65,19 +65,25 @@ func (s *fileServer) UploadFile(stream pbv1.FileService_UploadFileServer) error 
 		}
 		totalSize += int64(n)
 	}
-	ctx := context.Background()
 
 	//  . Save metadata to database
-	err = s.database.SaveFile(ctx, fileID, metadata, totalSize)
+	err = s.database.SaveFile(stream.Context(), fileID, metadata, totalSize)
 	if err != nil {
 		return status.Error(codes.Internal, "failed to save metadata")
 	}
 
-	//  . Send response once
+	//  a processing job
+	_, err = s.database.CreateProcessingJob(stream.Context(), fileID)
+	if err != nil {
+		log.Printf("Warning: failed to create processing job: %v", err)
+	}
+
+	// Send response
 	return stream.SendAndClose(&pbv1.UploadFileResponse{
-		FileId:   fileID,
-		Filename: metadata.Filename,
-		Size:     totalSize,
+		FileId:           fileID,
+		Filename:         metadata.Filename,
+		Size:             totalSize,
+		ProcessingStatus: pbv1.ProcessingStatus_PROCESSING_STATUS_PENDING,
 	})
 }
 
@@ -146,23 +152,50 @@ func (s *fileServer) GetFileMetadata(ctx context.Context, req *pbv1.GetFileMetad
 		return nil, status.Errorf(codes.InvalidArgument, "validation failed: %v", err)
 	}
 
-	//  . Query database
+	//  Query database
 	file, err := s.database.GetFile(ctx, req.FileId)
 	if err != nil {
 		return nil, status.Error(codes.NotFound, "file not found")
 	}
 
-	//  . Return response
+	//  Get processing job
+	job, err := s.database.GetJobByFileID(ctx, req.FileId)
+	processingStatus := pbv1.ProcessingStatus_PROCESSING_STATUS_PENDING
+	var processingResult *pbv1.ProcessingResult
+
+	if err == nil {
+		// Map job status to proto enum
+		switch job.Status {
+		case "completed":
+			processingStatus = pbv1.ProcessingStatus_PROCESSING_STATUS_COMPLETED
+			processingResult = &pbv1.ProcessingResult{
+				ThumbnailSmall:  job.ThumbnailSmall,
+				ThumbnailMedium: job.ThumbnailMedium,
+				ThumbnailLarge:  job.ThumbnailLarge,
+				OriginalWidth:   int32(job.OriginalWidth),
+				OriginalHeight:  int32(job.OriginalHeight),
+			}
+		case "processing":
+			processingStatus = pbv1.ProcessingStatus_PROCESSING_STATUS_PROCESSING
+		case "failed":
+			processingStatus = pbv1.ProcessingStatus_PROCESSING_STATUS_FAILED
+			processingResult = &pbv1.ProcessingResult{
+				ErrorMessage: job.ErrorMessage,
+			}
+		}
+	}
+
 	return &pbv1.GetFileMetadataResponse{
-		FileId:      file.ID,
-		Filename:    file.Name,
-		ContentType: file.ContentType,
-		Size:        file.Size,
-		UploadedAt:  timestamppb.New(file.UploadedAt),
+		FileId:           file.ID,
+		Filename:         file.Name,
+		ContentType:      file.ContentType,
+		Size:             file.Size,
+		UploadedAt:       timestamppb.New(file.UploadedAt),
+		ProcessingStatus: processingStatus,
+		ProcessingResult: processingResult,
 	}, nil
 }
 
-// message ListFilesRequest {
 func (fs *fileServer) ListFiles(ctx context.Context, req *pbv1.ListFilesRequest) (*pbv1.ListFilesResponse, error) {
 	// Validate request
 	if err := req.Validate(); err != nil {

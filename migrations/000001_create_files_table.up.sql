@@ -1,4 +1,3 @@
--- migrations/000001_create_files_table.up.sql
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
 CREATE TABLE files (

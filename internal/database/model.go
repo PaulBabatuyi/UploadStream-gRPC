@@ -1,6 +1,9 @@
 package database
 
-import "time"
+import (
+	"strings"
+	"time"
+)
 
 type FileRecord struct {
 	ID          string
@@ -10,25 +13,49 @@ type FileRecord struct {
 	Size        int64
 	StoragePath string
 	UploadedAt  time.Time
-	DeletedAt   time.Time
+	DeletedAt   *time.Time
+	FileType    FileType
 }
 
-// type FileType string
-// const (
-//     FileTypeImage   FileType = "image"
-//     FileTypeVideo   FileType = "video"s
-//     FileTypeAudio   FileType = "audio"
-//     FileTypeDocument FileType = "document"
-//     FileTypeOther   FileType = "other"
-// )
+type FileType string
 
-// type FileUploadedEvent struct {
-//     FileID       string
-//     UserID       string
-//     OriginalName string
-//     Size         int64
-//     ContentType  string    // "image/jpeg", "video/mp4", etc.
-//     FileType     FileType  // derived from ContentType or magic bytes
-//     TempPath     string
-//     UploadedAt   time.Time
-// }
+const (
+	FileTypeImage    FileType = "image"
+	FileTypeVideo    FileType = "video"
+	FileTypeAudio    FileType = "audio"
+	FileTypeDocument FileType = "document"
+	FileTypeOther    FileType = "other"
+)
+
+type ProcessingJob struct {
+	ID              int64
+	FileID          string
+	Status          string
+	RetryCount      int
+	MaxRetries      int
+	ErrorMessage    string
+	ThumbnailSmall  string
+	ThumbnailMedium string
+	ThumbnailLarge  string
+	OriginalWidth   int
+	OriginalHeight  int
+	CreatedAt       time.Time
+	UpdatedAt       time.Time
+	CompletedAt     *time.Time
+}
+
+func DeriveFileType(contentType string) FileType {
+	if strings.HasPrefix(contentType, "image/") {
+		return FileTypeImage
+	}
+	if strings.HasPrefix(contentType, "video/") {
+		return FileTypeVideo
+	}
+	if strings.HasPrefix(contentType, "audio/") {
+		return FileTypeAudio
+	}
+	if strings.Contains(contentType, "pdf") {
+		return FileTypeDocument
+	}
+	return FileTypeOther
+}

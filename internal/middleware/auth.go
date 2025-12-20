@@ -17,7 +17,7 @@ var validAPIKeys = map[string]bool{
 }
 
 // AuthInterceptor validates API keys from metadata
-func AuthInterceptor(
+func UnaryAuthInterceptor(
 	ctx context.Context,
 	req interface{},
 	info *grpc.UnaryServerInfo,

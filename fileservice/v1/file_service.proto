@@ -25,8 +25,13 @@ service FileService {
   // List user's files
   rpc ListFiles(ListFilesRequest) returns (ListFilesResponse);
 
-  // Delete a file
+    // Delete a file
   rpc DeleteFile(DeleteFileRequest) returns (DeleteFileResponse);
+
+// i should have done it this way but to keep this simple, likewise
+// rpc ListFile(ListFileRequest) returns (stream ListFileResponse);
+// rpc DeleteFile(stream DeleteFileRequest) returns (stream DeleteFileResponse);
+
 }
 
 // UploadFileRequest is sent by client in chunks
