@@ -26,7 +26,7 @@ func (s *fileServer) UploadFile(stream pbv1.FileService_UploadFileServer) error 
 	// Receive first message
 	firstMsg, err := stream.Recv()
 	if err != nil {
-		return status.Error(codes.InvalidArgument, "no metadata received")
+		return status.Errorf(codes.InvalidArgument, "no metadata received: %v", err)
 	}
 
 	metadata := firstMsg.GetMetadata()
@@ -43,7 +43,7 @@ func (s *fileServer) UploadFile(stream pbv1.FileService_UploadFileServer) error 
 	fileID := uuid.New().String()
 	writer, err := s.storage.CreateFile(fileID)
 	if err != nil {
-		return status.Error(codes.Internal, "failed to create file")
+		return status.Errorf(codes.Internal, "failed to create file: %v", err)
 	}
 	defer writer.Close()
 
@@ -55,13 +55,13 @@ func (s *fileServer) UploadFile(stream pbv1.FileService_UploadFileServer) error 
 			break // Client finished sending
 		}
 		if err != nil {
-			return status.Error(codes.Internal, "failed to receive chunk")
+			return status.Errorf(codes.Internal, "failed to receive chunk: %v", err)
 		}
 
 		chunk := msg.GetChunk()
 		n, err := writer.Write(chunk)
 		if err != nil {
-			return status.Error(codes.Internal, "failed to write chunk")
+			return status.Errorf(codes.Internal, "failed to write chunk: %v", err)
 		}
 		totalSize += int64(n)
 	}
@@ -69,7 +69,7 @@ func (s *fileServer) UploadFile(stream pbv1.FileService_UploadFileServer) error 
 	//  . Save metadata to database
 	err = s.database.SaveFile(stream.Context(), fileID, metadata, totalSize)
 	if err != nil {
-		return status.Error(codes.Internal, "failed to save metadata")
+		return status.Errorf(codes.Internal, "failed to save metadata: %v", err)
 	}
 
 	//  a processing job
@@ -96,7 +96,7 @@ func (s *fileServer) DownloadFile(req *pbv1.DownloadFileRequest, stream pbv1.Fil
 	//  Get file metadata
 	file, err := s.database.GetFile(stream.Context(), req.FileId)
 	if err != nil {
-		return status.Error(codes.NotFound, "file not found")
+		return status.Errorf(codes.NotFound, "file not found: %v", err)
 	}
 
 	//  . Send file info first
@@ -117,7 +117,7 @@ func (s *fileServer) DownloadFile(req *pbv1.DownloadFileRequest, stream pbv1.Fil
 	//  . Open file from storage
 	reader, err := s.storage.ReadFile(file.ID)
 	if err != nil {
-		return status.Error(codes.Internal, "failed to open file")
+		return status.Errorf(codes.Internal, "failed to open file: %v", err)
 	}
 	defer reader.Close()
 
@@ -129,7 +129,7 @@ func (s *fileServer) DownloadFile(req *pbv1.DownloadFileRequest, stream pbv1.Fil
 			break
 		}
 		if err != nil {
-			return status.Error(codes.Internal, "failed to read file")
+			return status.Errorf(codes.Internal, "failed to read file: %v", err)
 		}
 
 		err = stream.Send(&pbv1.DownloadFileResponse{
@@ -155,7 +155,7 @@ func (s *fileServer) GetFileMetadata(ctx context.Context, req *pbv1.GetFileMetad
 	//  Query database
 	file, err := s.database.GetFile(ctx, req.FileId)
 	if err != nil {
-		return nil, status.Error(codes.NotFound, "file not found")
+		return nil, status.Errorf(codes.NotFound, "file not found: %v", err)
 	}
 
 	//  Get processing job
@@ -217,7 +217,7 @@ func (fs *fileServer) ListFiles(ctx context.Context, req *pbv1.ListFilesRequest)
 	//  . Fetch from DB ( +1 to check if there's more)
 	records, err := fs.database.ListFiles(ctx, req.UserId, limit+1, offset)
 	if err != nil {
-		return nil, status.Error(codes.Internal, "failed to list files")
+		return nil, status.Errorf(codes.Internal, "failed to list files: %v", err)
 	}
 
 	//  . Build response
@@ -259,15 +259,15 @@ func (fs *fileServer) DeleteFile(ctx context.Context, req *pbv1.DeleteFileReques
 	//  . Delete from storage first (fail-fast if file missing)
 	file, err := fs.database.GetFile(ctx, req.FileId)
 	if err == sql.ErrNoRows {
-		return nil, status.Error(codes.NotFound, "file not found")
+		return nil, status.Errorf(codes.NotFound, "file not found: %v", err)
 	}
 	if err != nil {
-		return nil, status.Error(codes.Internal, "database error")
+		return nil, status.Errorf(codes.Internal, "database error: %v", err)
 	}
 
 	//  . Ownership check
 	if file.UserID != req.UserId {
-		return nil, status.Error(codes.PermissionDenied, "not owner")
+		return nil, status.Errorf(codes.PermissionDenied, "not owner: %v", err)
 	}
 
 	//  . Delete from storage
@@ -278,7 +278,7 @@ func (fs *fileServer) DeleteFile(ctx context.Context, req *pbv1.DeleteFileReques
 
 	//  . Soft-delete in DB
 	if err := fs.database.DeleteFile(ctx, req.FileId, req.UserId); err != nil {
-		return nil, status.Error(codes.Internal, "failed to delete file metadata")
+		return nil, status.Errorf(codes.Internal, "failed to delete file metadata: %v", err)
 	}
 
 	return &pbv1.DeleteFileResponse{

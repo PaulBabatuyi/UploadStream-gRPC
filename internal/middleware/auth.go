@@ -71,7 +71,7 @@ func StreamAuthInterceptor(
 func ExtractUserID(ctx context.Context) (string, error) {
 	md, ok := metadata.FromIncomingContext(ctx)
 	if !ok {
-		return "", status.Error(codes.Internal, "missing metadata")
+		return "", status.Error(codes.Unauthenticated, "missing metadata")
 	}
 
 	userIDs := md.Get("user-id")

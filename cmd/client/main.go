@@ -12,6 +12,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/metadata"
+	"google.golang.org/grpc/status"
 )
 
 const (
@@ -266,7 +267,11 @@ func main() {
 	fmt.Println("=== Uploading File ===")
 	uploadResp, err := client.UploadFile(ctx, "test-file.txt", userID)
 	if err != nil {
-		log.Printf("Upload failed: %v", err)
+		if st, ok := status.FromError(err); ok {
+			log.Printf("%s failed: %s", st.Code(), st.Message())
+		} else {
+			log.Printf("Upload failed: %v", err)
+		}
 	} else {
 		fmt.Printf("✓ Uploaded: %s (ID: %s, Size: %d bytes)\n",
 			uploadResp.Filename, uploadResp.FileId, uploadResp.Size)
