@@ -9,7 +9,7 @@ import (
 )
 
 type WorkerConfig struct {
-	DB              database.PostgresDB
+	DB              *database.PostgresDB
 	StoragePath     string
 	PollInterval    time.Duration
 	ShutdownTimeout time.Duration

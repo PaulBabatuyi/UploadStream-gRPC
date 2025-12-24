@@ -27,8 +27,8 @@ type DatabaseInterface interface {
 	ListFiles(ctx context.Context, userID string, limit int, offset int) ([]*database.FileRecord, error)
 	DeleteFile(ctx context.Context, fileID, userID string) error
 	CreateProcessingJob(ctx context.Context, fileID string) (int64, error)
-	GetNextPendingJob(ctx context.Context) (database.ProcessingJob, error)
+	GetNextPendingJob(ctx context.Context) (*database.ProcessingJob, error)
 	UpdateJobStatus(ctx context.Context, jobID int64, status, errorMsg string) error
 	CompleteJob(ctx context.Context, jobID int64, thumbSmall, thumbMed, thumbLarge string, width, height int) error
-	GetJobByFileID(ctx context.Context, fileID string) (database.ProcessingJob, error)
+	GetJobByFileID(ctx context.Context, fileID string) (*database.ProcessingJob, error)
 }

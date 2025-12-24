@@ -163,7 +163,7 @@ func (s *fileServer) GetFileMetadata(ctx context.Context, req *pbv1.GetFileMetad
 	processingStatus := pbv1.ProcessingStatus_PROCESSING_STATUS_PENDING
 	var processingResult *pbv1.ProcessingResult
 
-	if err == nil {
+	if err == nil && job != nil {
 		// Map job status to proto enum
 		switch job.Status {
 		case "completed":
