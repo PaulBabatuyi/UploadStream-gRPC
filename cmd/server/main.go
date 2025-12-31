@@ -13,30 +13,65 @@ import (
 
 	"github.com/PaulBabatuyi/UploadStream-gRPC/internal/database"
 	"github.com/PaulBabatuyi/UploadStream-gRPC/internal/middleware"
+	"github.com/PaulBabatuyi/UploadStream-gRPC/internal/observability"
 	"github.com/PaulBabatuyi/UploadStream-gRPC/internal/service"
 	"github.com/PaulBabatuyi/UploadStream-gRPC/internal/storage"
 	"github.com/PaulBabatuyi/UploadStream-gRPC/internal/worker"
+	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"google.golang.org/grpc"
 )
 
 func main() {
-	//  Initialize storage
+	// Initialize logger
+	isDev := os.Getenv("ENV") != "production"
+	logger, err := observability.InitLogger(isDev)
+	if err != nil {
+		log.Fatalf("Failed to initialize logger: %v", err)
+	}
+	defer logger.Sync()
+
+	logger.Info("starting UploadStream server",
+		map[string]interface{}{
+			"environment": os.Getenv("ENV"),
+			"version":     "0.1.0",
+		})
+
+	// Initialize tracing
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	tp, err := observability.InitTracerProvider(ctx, logger)
+	if err != nil {
+		logger.Fatal("failed to initialize tracer provider", map[string]interface{}{"error": err})
+	}
+	cancel()
+	defer observability.ShutdownTracerProvider(context.Background(), tp, logger)
+
+	// Initialize metrics
+	metrics, err := observability.InitMetrics()
+	if err != nil {
+		logger.Error("failed to initialize metrics", map[string]interface{}{"error": err})
+	} else {
+		// Start metrics HTTP server on port 9090
+		observability.StartMetricsServer("9090", logger)
+		logger.Info("metrics endpoint available at http://localhost:9090/metrics")
+	}
+
+	// Initialize storage
 	storageLayer := storage.NewFilesystemStorage("./data/files")
-	log.Println("✓ Filesystem storage initialized")
+	logger.Info("filesystem storage initialized")
 
 	// Initialize database
 	dbURL := os.Getenv("UPLOADSTREAM")
 	if dbURL == "" {
-		panic("UPLOADSTREAM env var is required")
+		logger.Fatal("UPLOADSTREAM env var is required")
 	}
 
 	db, err := database.NewPostgresDB(dbURL)
 	if err != nil {
-		log.Fatal("Failed to connect to database:", err)
+		logger.Fatal("failed to connect to database", map[string]interface{}{"error": err})
 	}
-	log.Println("✓ Database connected")
+	logger.Info("database connected")
 
-	// : Start background worker
+	// Start background worker
 	workerConfig := &worker.WorkerConfig{
 		DB:           db,
 		StoragePath:  "./data/files",
@@ -45,36 +80,61 @@ func main() {
 	processingWorker := worker.NewProcessingWorker(workerConfig)
 	processingWorker.Start(context.Background())
 
-	// Create gRPC server
-	grpcServer := grpc.NewServer(
-		grpc.UnaryInterceptor(middleware.UnaryAuthInterceptor),
-		grpc.StreamInterceptor(middleware.StreamAuthInterceptor),
-	)
-	//  register  service
+	// Build gRPC server with observability interceptors
+	grpcServerOpts := []grpc.ServerOption{
+		// Auth interceptors
+		grpc.UnaryInterceptor(
+			middleware.ChainUnaryInterceptors(
+				middleware.UnaryAuthInterceptor,
+				middleware.UnaryLoggingInterceptor(logger),
+			),
+		),
+		grpc.StreamInterceptor(
+			middleware.ChainStreamInterceptors(
+				middleware.StreamAuthInterceptor,
+				middleware.StreamLoggingInterceptor(logger),
+			),
+		),
+		// OpenTelemetry tracing
+		grpc.StatsHandler(otelgrpc.NewServerHandler()),
+	}
+
+	// Add Prometheus metrics if available
+	if metrics != nil {
+		grpcServerOpts = append(grpcServerOpts,
+			grpc.ChainUnaryInterceptor(metrics.GetServerMetrics().UnaryServerInterceptor()),
+			grpc.ChainStreamInterceptor(metrics.GetServerMetrics().StreamServerInterceptor()),
+		)
+	}
+
+	grpcServer := grpc.NewServer(grpcServerOpts...)
+
+	// Register service
 	fileServer := service.NewFileServer(storageLayer, db)
 	pbv1.RegisterFileServiceServer(grpcServer, fileServer)
-	log.Println("✓ FileService registered")
+	logger.Info("FileService registered")
 
-	//  Listen and serve
+	// Listen and serve
 	lis, err := net.Listen("tcp", ":50051")
 	if err != nil {
-		log.Fatal("Failed to listen:", err)
+		logger.Fatal("failed to listen", map[string]interface{}{"error": err})
 	}
-	log.Println(" Server listening on :50051")
+	logger.Info("gRPC server listening", map[string]interface{}{"addr": ":50051"})
 
 	// Graceful shutdown
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
 
 	go func() {
-		<-sigChan
-		log.Println("\n Shutting down...")
+		sig := <-sigChan
+		logger.Info("shutdown signal received", map[string]interface{}{"signal": sig.String()})
+
 		processingWorker.Stop()
 		grpcServer.GracefulStop()
+		logger.Info("server shutdown complete")
 	}()
 
 	if err := grpcServer.Serve(lis); err != nil {
-		log.Fatal("Failed to serve:", err)
+		logger.Error("server failed", map[string]interface{}{"error": err})
 	}
-
 }

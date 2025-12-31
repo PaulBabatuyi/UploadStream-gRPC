@@ -131,6 +131,7 @@ func (p *PostgresDB) GetNextPendingJob(ctx context.Context) (*ProcessingJob, err
         SELECT id, file_id, status, retry_count, max_retries, error_message
         FROM processing_jobs
         WHERE status = 'pending' AND retry_count < max_retries
+              AND (updated_at < NOW() - INTERVAL '5 minutes' OR retry_count = 0)
         ORDER BY created_at ASC
         LIMIT 1
         FOR UPDATE SKIP LOCKED

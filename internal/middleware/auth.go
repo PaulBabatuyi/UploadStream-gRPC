@@ -2,7 +2,6 @@ package middleware
 
 import (
 	"context"
-	"strings"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -79,10 +78,5 @@ func ExtractUserID(ctx context.Context) (string, error) {
 		return "", status.Error(codes.Unauthenticated, "missing user-id")
 	}
 
-	userID := strings.TrimSpace(userIDs[0])
-	if userID == "" {
-		return "", status.Error(codes.InvalidArgument, "user-id cannot be empty")
-	}
-
-	return userID, nil
+	return userIDs[0], nil
 }

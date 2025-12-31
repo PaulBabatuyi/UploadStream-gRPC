@@ -76,7 +76,7 @@ func (pw *ProcessingWorker) processNext(ctx context.Context, imageProc *ImagePro
 	file, err := pw.config.DB.GetFile(ctx, job.FileID)
 	if err != nil {
 		log.Printf("File not found: %v", err)
-		pw.config.DB.UpdateJobStatus(ctx, job.ID, "failed", "File not found")
+		pw.config.DB.UpdateJobStatus(ctx, job.ID, "pending", "File not found")
 		return
 	}
 
@@ -95,7 +95,7 @@ func (pw *ProcessingWorker) processImage(ctx context.Context, job *database.Proc
 	thumbSmall, thumbMed, thumbLarge, width, height, err := imageProc.ProcessImage(ctx, job.FileID, file.ContentType)
 	if err != nil {
 		log.Printf("Image processing failed: %v", err)
-		pw.config.DB.UpdateJobStatus(ctx, job.ID, "failed", err.Error())
+		pw.config.DB.UpdateJobStatus(ctx, job.ID, "pending", err.Error())
 		return
 	}
 

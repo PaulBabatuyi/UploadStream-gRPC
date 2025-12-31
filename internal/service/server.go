@@ -6,13 +6,15 @@ import (
 
 	pbv1 "github.com/PaulBabatuyi/UploadStream-gRPC/gen/fileservice/v1"
 	"github.com/PaulBabatuyi/UploadStream-gRPC/internal/database"
+	"golang.org/x/sync/semaphore"
 )
 
 type fileServer struct {
 	pbv1.UnimplementedFileServiceServer
 
-	storage  StorageInterface
-	database DatabaseInterface
+	storage   StorageInterface
+	database  DatabaseInterface
+	uploadSem *semaphore.Weighted
 }
 
 type StorageInterface interface {

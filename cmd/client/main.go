@@ -79,6 +79,8 @@ func (fc *FileClient) UploadFile(ctx context.Context, filePath, userID string) (
 	}
 
 	// Create upload stream
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second) // Longer for files
+	defer cancel()
 	stream, err := fc.client.UploadFile(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create stream: %w", err)
@@ -141,6 +143,8 @@ func (fc *FileClient) UploadFile(ctx context.Context, filePath, userID string) (
 // DownloadFile streams a file from the server
 func (fc *FileClient) DownloadFile(ctx context.Context, fileID, outputPath string) error {
 	// Create download stream
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second) // Longer for files
+	defer cancel()
 	stream, err := fc.client.DownloadFile(ctx, &pbv1.DownloadFileRequest{
 		FileId: fileID,
 	})
@@ -196,6 +200,8 @@ func (fc *FileClient) DownloadFile(ctx context.Context, fileID, outputPath strin
 
 // GetFileMetadata retrieves metadata for a file
 func (fc *FileClient) GetFileMetadata(ctx context.Context, fileID string) (*pbv1.GetFileMetadataResponse, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
 	resp, err := fc.client.GetFileMetadata(ctx, &pbv1.GetFileMetadataRequest{
 		FileId: fileID,
 	})
@@ -207,6 +213,8 @@ func (fc *FileClient) GetFileMetadata(ctx context.Context, fileID string) (*pbv1
 
 // ListFiles lists files for a user with pagination
 func (fc *FileClient) ListFiles(ctx context.Context, userID string, pageSize int32, pageToken string) (*pbv1.ListFilesResponse, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
 	resp, err := fc.client.ListFiles(ctx, &pbv1.ListFilesRequest{
 		UserId:    userID,
 		PageSize:  pageSize,
@@ -220,6 +228,8 @@ func (fc *FileClient) ListFiles(ctx context.Context, userID string, pageSize int
 
 // DeleteFile deletes a file
 func (fc *FileClient) DeleteFile(ctx context.Context, fileID, userID string) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
 	resp, err := fc.client.DeleteFile(ctx, &pbv1.DeleteFileRequest{
 		FileId: fileID,
 		UserId: userID,

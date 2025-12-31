@@ -1,0 +1,30 @@
+global:
+  # How often to scrape metrics
+  scrape_interval: 15s
+  # How long until a scrape is considered failed
+  scrape_timeout: 10s
+  # How often to evaluate alert rules
+  evaluation_interval: 15s
+
+# Define alert rules (optional)
+rule_files: []
+  # - "alert_rules.yml"
+
+# Scrape configurations
+scrape_configs:
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+
+  - job_name: 'uploadstream'
+    # Scrape interval for this job (overrides global)
+    scrape_interval: 5s
+    scrape_timeout: 5s
+    # Metrics path (default is /metrics)
+    metrics_path: '/metrics'
+    # Static list of targets
+    static_configs:
+      - targets: ['localhost:9090']
+        labels:
+          service: 'uploadstream'
+          env: 'development'
