@@ -18,6 +18,7 @@ import (
 	"github.com/PaulBabatuyi/UploadStream-gRPC/internal/storage"
 	"github.com/PaulBabatuyi/UploadStream-gRPC/internal/worker"
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
+	"go.uber.org/zap"
 	"google.golang.org/grpc"
 )
 
@@ -31,16 +32,15 @@ func main() {
 	defer logger.Sync()
 
 	logger.Info("starting UploadStream server",
-		map[string]interface{}{
-			"environment": os.Getenv("ENV"),
-			"version":     "0.1.0",
-		})
+		zap.String("environment", os.Getenv("ENV")),
+		zap.String("version", "0.1.0"),
+	)
 
 	// Initialize tracing
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	tp, err := observability.InitTracerProvider(ctx, logger)
 	if err != nil {
-		logger.Fatal("failed to initialize tracer provider", map[string]interface{}{"error": err})
+		logger.Fatal("failed to initialize tracer provider", zap.Error(err))
 	}
 	cancel()
 	defer observability.ShutdownTracerProvider(context.Background(), tp, logger)
@@ -48,7 +48,7 @@ func main() {
 	// Initialize metrics
 	metrics, err := observability.InitMetrics()
 	if err != nil {
-		logger.Error("failed to initialize metrics", map[string]interface{}{"error": err})
+		logger.Error("failed to initialize metrics", zap.Error(err))
 	} else {
 		// Start metrics HTTP server on port 9090
 		observability.StartMetricsServer("9090", logger)
@@ -67,7 +67,7 @@ func main() {
 
 	db, err := database.NewPostgresDB(dbURL)
 	if err != nil {
-		logger.Fatal("failed to connect to database", map[string]interface{}{"error": err})
+		logger.Fatal("failed to connect to database", zap.Error(err))
 	}
 	logger.Info("database connected")
 
@@ -117,9 +117,9 @@ func main() {
 	// Listen and serve
 	lis, err := net.Listen("tcp", ":50051")
 	if err != nil {
-		logger.Fatal("failed to listen", map[string]interface{}{"error": err})
+		logger.Fatal("failed to listen", zap.Error(err))
 	}
-	logger.Info("gRPC server listening", map[string]interface{}{"addr": ":50051"})
+	logger.Info("gRPC server listening", zap.String("addr", ":50051"))
 
 	// Graceful shutdown
 	sigChan := make(chan os.Signal, 1)
@@ -127,7 +127,7 @@ func main() {
 
 	go func() {
 		sig := <-sigChan
-		logger.Info("shutdown signal received", map[string]interface{}{"signal": sig.String()})
+		logger.Info("shutdown signal received", zap.String("signal", sig.String()))
 
 		processingWorker.Stop()
 		grpcServer.GracefulStop()
@@ -135,6 +135,6 @@ func main() {
 	}()
 
 	if err := grpcServer.Serve(lis); err != nil {
-		logger.Error("server failed", map[string]interface{}{"error": err})
+		logger.Error("server failed", zap.Error(err))
 	}
 }

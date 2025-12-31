@@ -9,6 +9,7 @@ import (
 
 	pbv1 "github.com/PaulBabatuyi/UploadStream-gRPC/gen/fileservice/v1"
 	"github.com/google/uuid"
+	"golang.org/x/sync/semaphore"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -16,8 +17,9 @@ import (
 
 func NewFileServer(storage StorageInterface, db DatabaseInterface) *fileServer {
 	return &fileServer{
-		storage:  storage,
-		database: db,
+		storage:   storage,
+		database:  db,
+		uploadSem: semaphore.NewWeighted(100),
 	}
 }
 
