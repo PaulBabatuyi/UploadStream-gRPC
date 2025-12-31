@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"net/http"
 	"os"
 	"time"
 
@@ -244,25 +245,43 @@ func (fc *FileClient) DeleteFile(ctx context.Context, fileID, userID string) err
 	return nil
 }
 
-// detectContentType returns a simple MIME type based on file extension
-func detectContentType(filePath string) string {
-	ext := filePath[len(filePath)-4:]
-	switch ext {
-	case ".jpg", "jpeg":
-		return "image/jpeg"
-	case ".png":
-		return "image/png"
-	case ".pdf":
-		return "application/pdf"
-	case ".txt":
-		return "text/plain"
-	case ".mp4":
-		return "video/mp4"
-	default:
-		return "application/octet-stream"
+// // detectContentType returns a simple MIME type based on file extension
+//
+//	func detectContentType(filePath string) string {
+//		ext := filePath[len(filePath)-4:]
+//		switch ext {
+//		case ".jpg", "jpeg":
+//			return "image/jpeg"
+//		case ".png":
+//			return "image/png"
+//		case ".pdf":
+//			return "application/pdf"
+//		case ".txt":
+//			return "text/plain"
+//		case ".mp4":
+//			return "video/mp4"
+//		default:
+//			return "application/octet-stream"
+//		}
+//	}
+func detectContentType(filePath string) (string, error) {
+	file, err := os.Open(filePath)
+	if err != nil {
+		return "", fmt.Errorf("open file: %w", err)
 	}
-}
+	defer file.Close()
 
+	// Read first 512 bytes for magic byte detection
+	buffer := make([]byte, 512)
+	n, err := file.Read(buffer)
+	if err != nil && n == 0 {
+		return "", fmt.Errorf("read file: %w", err)
+	}
+
+	// Detect content type from magic bytes
+	contentType := http.DetectContentType(buffer[:n])
+	return contentType, nil
+}
 func main() {
 	// Create client
 	client, err := NewFileClient(serverAddr)

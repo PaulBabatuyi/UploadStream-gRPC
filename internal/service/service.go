@@ -15,6 +15,11 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
+const (
+	maxFileSize  = 512 * 1024 * 1024 // 512MB (matches proto)
+	maxChunkSize = 4 * 1024 * 1024   // 4MB per gRPC message limit
+)
+
 func NewFileServer(storage StorageInterface, db DatabaseInterface) *fileServer {
 	return &fileServer{
 		storage:   storage,
@@ -24,8 +29,7 @@ func NewFileServer(storage StorageInterface, db DatabaseInterface) *fileServer {
 }
 
 func (s *fileServer) UploadFile(stream pbv1.FileService_UploadFileServer) error {
-
-	// Receive first message
+	//  Receive metadata
 	firstMsg, err := stream.Recv()
 	if err != nil {
 		return status.Errorf(codes.InvalidArgument, "no metadata received: %v", err)
@@ -36,12 +40,18 @@ func (s *fileServer) UploadFile(stream pbv1.FileService_UploadFileServer) error 
 		return status.Error(codes.InvalidArgument, "first message must be metadata")
 	}
 
-	//validate metadata
+	// Validate metadata
 	if err := metadata.Validate(); err != nil {
 		return status.Errorf(codes.InvalidArgument, "validation failed: %v", err)
 	}
 
-	//  . Create file in storage
+	//  Enforce size limit
+	if metadata.Size > maxFileSize {
+		return status.Errorf(codes.InvalidArgument,
+			"file too large: %d bytes (max %d)", metadata.Size, maxFileSize)
+	}
+
+	// Create file in storage
 	fileID := uuid.New().String()
 	writer, err := s.storage.CreateFile(fileID)
 	if err != nil {
@@ -49,38 +59,73 @@ func (s *fileServer) UploadFile(stream pbv1.FileService_UploadFileServer) error 
 	}
 	defer writer.Close()
 
-	//  . Stream chunks from client
+	ctx := stream.Context()
+	//  Stream chunks with enforced limits
 	totalSize := int64(0)
 	for {
+		// Check if context is canceled before receiving
+		select {
+		case <-ctx.Done():
+			return status.Errorf(codes.Canceled, "upload canceled: %v", ctx.Err())
+		default:
+		}
+
 		msg, err := stream.Recv()
 		if err == io.EOF {
-			break // Client finished sending
+			break
 		}
 		if err != nil {
+			// Clean up on failure
+			s.storage.DeleteFile(fileID)
 			return status.Errorf(codes.Internal, "failed to receive chunk: %v", err)
 		}
 
 		chunk := msg.GetChunk()
+		chunkLen := int64(len(chunk))
+
+		// Check chunk size
+		if chunkLen > maxChunkSize {
+			s.storage.DeleteFile(fileID)
+			return status.Errorf(codes.InvalidArgument,
+				"chunk too large: %d bytes (max %d)", chunkLen, maxChunkSize)
+		}
+
+		// Check total size doesn't exceed declared size
+		if totalSize+chunkLen > metadata.Size {
+			s.storage.DeleteFile(fileID)
+			return status.Errorf(codes.InvalidArgument,
+				"received %d bytes, expected %d", totalSize+chunkLen, metadata.Size)
+		}
+
+		// Write chunk
 		n, err := writer.Write(chunk)
 		if err != nil {
+			s.storage.DeleteFile(fileID)
 			return status.Errorf(codes.Internal, "failed to write chunk: %v", err)
 		}
 		totalSize += int64(n)
 	}
 
-	//  . Save metadata to database
-	err = s.database.SaveFile(stream.Context(), fileID, metadata, totalSize)
-	if err != nil {
+	// Verify final size matches declared size
+	if totalSize != metadata.Size {
+		s.storage.DeleteFile(fileID)
+		return status.Errorf(codes.InvalidArgument,
+			"size mismatch: received %d bytes, expected %d", totalSize, metadata.Size)
+	}
+
+	//  Save metadata to database
+	if err := s.database.SaveFile(stream.Context(), fileID, metadata, totalSize); err != nil {
+		s.storage.DeleteFile(fileID)
 		return status.Errorf(codes.Internal, "failed to save metadata: %v", err)
 	}
 
-	//  a processing job
-	_, err = s.database.CreateProcessingJob(stream.Context(), fileID)
-	if err != nil {
-		log.Printf("Warning: failed to create processing job: %v", err)
+	// Create processing job
+	if _, err := s.database.CreateProcessingJob(stream.Context(), fileID); err != nil {
+		// Non-fatal: log warning
+		log.Printf("Warning: failed to create processing job: %v\n", err)
 	}
 
-	// Send response
+	//  Send response
 	return stream.SendAndClose(&pbv1.UploadFileResponse{
 		FileId:           fileID,
 		Filename:         metadata.Filename,
@@ -90,6 +135,8 @@ func (s *fileServer) UploadFile(stream pbv1.FileService_UploadFileServer) error 
 }
 
 func (s *fileServer) DownloadFile(req *pbv1.DownloadFileRequest, stream pbv1.FileService_DownloadFileServer) error {
+	ctx := stream.Context()
+
 	// Validate request
 	if err := req.Validate(); err != nil {
 		return status.Errorf(codes.InvalidArgument, "validation failed: %v", err)
@@ -126,6 +173,12 @@ func (s *fileServer) DownloadFile(req *pbv1.DownloadFileRequest, stream pbv1.Fil
 	//  . Stream chunks to client
 	buffer := make([]byte, 64*1024) // 64KB chunks
 	for {
+		select {
+		case <-ctx.Done():
+			return status.Errorf(codes.Canceled, "download canceled: %v", ctx.Err())
+		default:
+		}
+
 		n, err := reader.Read(buffer)
 		if err == io.EOF {
 			break
