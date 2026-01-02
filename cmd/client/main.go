@@ -7,6 +7,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"path/filepath"
 	"time"
 
 	pbv1 "github.com/PaulBabatuyi/UploadStream-gRPC/gen/fileservice/v1"
@@ -245,43 +246,49 @@ func (fc *FileClient) DeleteFile(ctx context.Context, fileID, userID string) err
 	return nil
 }
 
-// // detectContentType returns a simple MIME type based on file extension
-//
-//	func detectContentType(filePath string) string {
-//		ext := filePath[len(filePath)-4:]
-//		switch ext {
-//		case ".jpg", "jpeg":
-//			return "image/jpeg"
-//		case ".png":
-//			return "image/png"
-//		case ".pdf":
-//			return "application/pdf"
-//		case ".txt":
-//			return "text/plain"
-//		case ".mp4":
-//			return "video/mp4"
-//		default:
-//			return "application/octet-stream"
-//		}
-//	}
-func detectContentType(filePath string) (string, error) {
+// detectContentType attempts to detect MIME type, falls back to extension
+func detectContentType(filePath string) string {
+	// Try magic bytes first
 	file, err := os.Open(filePath)
-	if err != nil {
-		return "", fmt.Errorf("open file: %w", err)
+	if err == nil {
+		defer file.Close()
+		buffer := make([]byte, 512)
+		n, err := file.Read(buffer)
+		if err == nil && n > 0 {
+			detected := http.DetectContentType(buffer[:n])
+			// Don't return "application/octet-stream" if we can infer from extension
+			if detected != "application/octet-stream" {
+				return detected
+			}
+		}
 	}
-	defer file.Close()
 
-	// Read first 512 bytes for magic byte detection
-	buffer := make([]byte, 512)
-	n, err := file.Read(buffer)
-	if err != nil && n == 0 {
-		return "", fmt.Errorf("read file: %w", err)
+	// Fallback to extension-based detection
+	ext := filepath.Ext(filePath)
+	switch ext {
+	case ".jpg", ".jpeg":
+		return "image/jpeg"
+	case ".png":
+		return "image/png"
+	case ".gif":
+		return "image/gif"
+	case ".webp":
+		return "image/webp"
+	case ".pdf":
+		return "application/pdf"
+	case ".txt":
+		return "text/plain"
+	case ".json":
+		return "application/json"
+	case ".mp4":
+		return "video/mp4"
+	case ".mp3":
+		return "audio/mpeg"
+	default:
+		return "application/octet-stream"
 	}
-
-	// Detect content type from magic bytes
-	contentType := http.DetectContentType(buffer[:n])
-	return contentType, nil
 }
+
 func main() {
 	// Create client
 	client, err := NewFileClient(serverAddr)

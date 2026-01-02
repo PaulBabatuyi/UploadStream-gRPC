@@ -1,6 +1,7 @@
 package service
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
 	"io"
@@ -59,6 +60,10 @@ func (s *fileServer) UploadFile(stream pbv1.FileService_UploadFileServer) error 
 	}
 	defer writer.Close()
 
+	// Buffer for magic byte validation
+	var firstChunk []byte
+	validateMagicBytes := true
+
 	ctx := stream.Context()
 	//  Stream chunks with enforced limits
 	totalSize := int64(0)
@@ -81,6 +86,19 @@ func (s *fileServer) UploadFile(stream pbv1.FileService_UploadFileServer) error 
 		}
 
 		chunk := msg.GetChunk()
+		// Validate magic bytes on first chunk
+		if validateMagicBytes && len(chunk) > 0 {
+			firstChunk = chunk
+			if len(firstChunk) >= 512 || totalSize+int64(len(chunk)) == metadata.Size {
+				reader := bytes.NewReader(firstChunk)
+				if err := ValidateContentType(reader, metadata.ContentType); err != nil {
+					s.storage.DeleteFile(fileID)
+					return status.Errorf(codes.InvalidArgument, "invalid file: %v", err)
+				}
+			}
+			validateMagicBytes = false
+		}
+
 		chunkLen := int64(len(chunk))
 
 		// Check chunk size

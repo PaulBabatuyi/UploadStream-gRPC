@@ -1,0 +1,40 @@
+version: '3.9'
+
+services:
+  postgres:
+    environment:
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    volumes:
+      - /mnt/data/postgres:/var/lib/postgresql/data
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 4G
+
+  uploadstream:
+    environment:
+      UPLOADSTREAM: "postgres://uploader:${DB_PASSWORD}@postgres:5432/uploadstream?sslmode=require"
+      ENV: "production"
+    volumes:
+      - /mnt/data/files:/app/data/files
+    deploy:
+      replicas: 3
+      resources:
+        limits:
+          cpus: '1'
+          memory: 2G
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+
+  prometheus:
+    volumes:
+      - /mnt/data/prometheus:/prometheus
+
+  grafana:
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD}
+    volumes:
+      - /mnt/data/grafana:/var/lib/grafana

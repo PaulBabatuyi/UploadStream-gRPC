@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: uploadstream-pvc
+  namespace: uploadstream
+spec:
+  accessModes:
+    - ReadWriteMany  # Shared across pods
+  resources:
+    requests:
+      storage: 100Gi
+  storageClassName: standard  # Change based on your cloud provider

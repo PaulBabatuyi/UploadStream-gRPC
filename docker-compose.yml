@@ -1,0 +1,108 @@
+version: '3.9'
+
+services:
+  # PostgreSQL database
+  postgres:
+    image: postgres:16-alpine
+    container_name: uploadstream-postgres
+    environment:
+      POSTGRES_DB: uploadstream
+      POSTGRES_USER: uploader
+      POSTGRES_PASSWORD: uploader
+      POSTGRES_INITDB_ARGS: "-E UTF8"
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./migrations:/docker-entrypoint-initdb.d
+    networks:
+      - uploadstream
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U uploader -d uploadstream"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # UploadStream gRPC server
+  uploadstream:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: uploadstream-server
+    environment:
+      UPLOADSTREAM: "postgres://uploader:uploader@postgres:5432/uploadstream?sslmode=disable"
+      ENV: "development"
+    ports:
+      - "50051:50051"  # gRPC
+      - "9090:9090"    # Metrics
+    volumes:
+      - file_storage:/app/data/files
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - uploadstream
+    restart: unless-stopped
+
+  # Prometheus (metrics collection)
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: uploadstream-prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/usr/share/prometheus/console_libraries'
+      - '--web.console.templates=/usr/share/prometheus/consoles'
+    ports:
+      - "9091:9090"  # Changed to avoid conflict with app metrics
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    networks:
+      - uploadstream
+    restart: unless-stopped
+
+  # Grafana (metrics visualization)
+  grafana:
+    image: grafana/grafana:latest
+    container_name: uploadstream-grafana
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_USERS_ALLOW_SIGN_UP: false
+      GF_SERVER_ROOT_URL: http://localhost:3000
+    ports:
+      - "3000:3000"
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./grafana/dashboards:/etc/grafana/provisioning/dashboards:ro
+      - ./grafana/datasources:/etc/grafana/provisioning/datasources:ro
+    depends_on:
+      - prometheus
+    networks:
+      - uploadstream
+    restart: unless-stopped
+
+  # Jaeger (distributed tracing)
+  jaeger:
+    image: jaegertracing/all-in-one:1.53
+    container_name: uploadstream-jaeger
+    environment:
+      COLLECTOR_OTLP_ENABLED: true
+    ports:
+      - "16686:16686"  # Jaeger UI
+      - "14250:14250"  # gRPC receiver
+      - "4317:4317"    # OTLP gRPC receiver
+      - "4318:4318"    # OTLP HTTP receiver
+    networks:
+      - uploadstream
+    restart: unless-stopped
+
+networks:
+  uploadstream:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  file_storage:
+  prometheus_data:
+  grafana_data:

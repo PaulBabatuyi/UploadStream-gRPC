@@ -1,0 +1,15 @@
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: uploadstream-metrics
+  namespace: uploadstream
+  labels:
+    app: uploadstream
+spec:
+  selector:
+    matchLabels:
+      app: uploadstream
+  endpoints:
+    - port: metrics
+      path: /metrics
+      interval: 30s

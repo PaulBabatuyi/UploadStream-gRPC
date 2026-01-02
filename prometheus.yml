@@ -5,7 +5,16 @@ global:
   scrape_timeout: 10s
   # How often to evaluate alert rules
   evaluation_interval: 15s
+  external_labels:
+    cluster: 'uploadstream-dev'
+    environment: 'development'
 
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: []
+          # - alertmanager:9093
+          
 # Define alert rules (optional)
 rule_files: []
   # - "alert_rules.yml"

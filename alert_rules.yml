@@ -1,0 +1,36 @@
+groups:
+  - name: uploadstream_alerts
+    interval: 30s
+    rules:
+      - alert: HighErrorRate
+        expr: |
+          rate(grpc_server_handled_total{grpc_code!="OK"}[5m]) 
+          / 
+          rate(grpc_server_handled_total[5m]) > 0.05
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High error rate on {{ $labels.grpc_method }}"
+          description: "Error rate is {{ $value | humanizePercentage }}"
+
+      - alert: SlowRequests
+        expr: |
+          histogram_quantile(0.95, 
+            rate(grpc_server_handling_seconds_bucket[5m])
+          ) > 5
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Slow requests on {{ $labels.grpc_method }}"
+          description: "P95 latency is {{ $value }}s"
+
+      - alert: ServiceDown
+        expr: up{job="uploadstream"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "UploadStream service is down"
+          description: "Service {{ $labels.instance }} is unreachable"

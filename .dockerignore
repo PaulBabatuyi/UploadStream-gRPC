@@ -1,0 +1,15 @@
+.git
+.gitignore
+.env
+.envrc
+*.md
+!README.md
+data/files/*
+!data/files/.gitkeep
+gen/fileservice/v1/*
+!gen/fileservice/v1/.gitkeep
+*.log
+*.sql
+idea.html
+test-file.txt
+downloaded-file.txt

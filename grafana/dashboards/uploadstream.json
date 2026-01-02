@@ -1,0 +1,73 @@
+{
+  "dashboard": {
+    "title": "UploadStream gRPC Metrics",
+    "tags": ["grpc", "uploadstream"],
+    "timezone": "browser",
+    "panels": [
+      {
+        "id": 1,
+        "title": "Request Rate (req/s)",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "rate(grpc_server_handled_total[5m])",
+            "legendFormat": "{{grpc_method}}"
+          }
+        ],
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0}
+      },
+      {
+        "id": 2,
+        "title": "Request Duration (p95)",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "histogram_quantile(0.95, rate(grpc_server_handling_seconds_bucket[5m]))",
+            "legendFormat": "{{grpc_method}} p95"
+          }
+        ],
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0}
+      },
+      {
+        "id": 3,
+        "title": "Error Rate (%)",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "rate(grpc_server_handled_total{grpc_code!=\"OK\"}[5m]) / rate(grpc_server_handled_total[5m]) * 100",
+            "legendFormat": "{{grpc_method}}"
+          }
+        ],
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8}
+      },
+      {
+        "id": 4,
+        "title": "Active Connections",
+        "type": "stat",
+        "targets": [
+          {
+            "expr": "grpc_server_started_total - grpc_server_handled_total",
+            "legendFormat": "Active"
+          }
+        ],
+        "gridPos": {"h": 4, "w": 6, "x": 12, "y": 8}
+      },
+      {
+        "id": 5,
+        "title": "Upload/Download Throughput",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "rate(grpc_server_msg_sent_total{grpc_method=\"DownloadFile\"}[5m])",
+            "legendFormat": "Download chunks/s"
+          },
+          {
+            "expr": "rate(grpc_server_msg_received_total{grpc_method=\"UploadFile\"}[5m])",
+            "legendFormat": "Upload chunks/s"
+          }
+        ],
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 16}
+      }
+    ]
+  }
+}
