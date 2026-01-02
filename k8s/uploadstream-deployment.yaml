@@ -26,7 +26,7 @@ spec:
     spec:
       containers:
         - name: uploadstream
-          image: your-registry.io/uploadstream:latest
+          image: paulbabatuyi/uploadstream:latest
           imagePullPolicy: Always
           ports:
             - name: grpc

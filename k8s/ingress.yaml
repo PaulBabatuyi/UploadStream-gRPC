@@ -11,10 +11,10 @@ metadata:
 spec:
   tls:
     - hosts:
-        - api.paulbabatuyi.com
+        - api.domain.com
       secretName: uploadstream-tls
   rules:
-    - host: api.paulbabatuyi.com
+    - host: api.domain.com
       http:
         paths:
           - path: /

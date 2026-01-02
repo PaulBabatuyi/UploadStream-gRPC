@@ -3,7 +3,7 @@
 # Variables
 APP_NAME := uploadstream
 DOCKER_IMAGE := $(APP_NAME):latest
-DOCKER_REGISTRY := paulbabatuyi.io  
+DOCKER_REGISTRY := paulbabatuyi  
 DB_URL := postgres://uploader:uploader@localhost:5432/uploadstream?sslmode=disable
 
 # Colors for output

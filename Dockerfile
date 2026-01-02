@@ -1,25 +1,37 @@
-FROM alpine:3.19
+# Multi-stage build
+FROM golang:1.25-alpine AS builder
 
-RUN apk --no-cache add ca-certificates tzdata
+RUN apk add --no-cache git make
 
 WORKDIR /app
 
-# Copy binary from builder
+COPY go.mod go.sum ./
+RUN go mod download
+
+COPY . .
+
+RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo \
+    -o uploadstream cmd/server/main.go
+
+# Final stage
+FROM alpine:3.19
+
+RUN apk --no-cache add ca-certificates tzdata wget
+
+WORKDIR /app
+
 COPY --from=builder /app/uploadstream .
 
-# Create data directory for file storage
 RUN mkdir -p /app/data/files
 
-# Expose gRPC port and metrics port
 EXPOSE 50051 9090
 
-# Health check
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
   CMD wget --quiet --tries=1 --spider http://localhost:9090/health || exit 1
 
-# Run as non-root user
-RUN adduser -D -u 1000 appuser
-RUN chown -R appuser:appuser /app
+RUN adduser -D -u 1000 appuser && \
+    chown -R appuser:appuser /app
+
 USER appuser
 
 ENTRYPOINT ["./uploadstream"]
