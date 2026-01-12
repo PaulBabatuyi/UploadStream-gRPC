@@ -35,12 +35,12 @@ func NewProcessingWorker(config *WorkerConfig) *ProcessingWorker {
 
 func (pw *ProcessingWorker) Start(ctx context.Context) {
 	go pw.run(ctx)
-	log.Println("✓ Processing worker started")
+	log.Println("Processing worker started")
 }
 
 func (pw *ProcessingWorker) Stop() {
 	close(pw.done)
-	log.Println("✓ Processing worker stopped")
+	log.Println("Processing worker stopped")
 }
 
 func (pw *ProcessingWorker) run(ctx context.Context) {
@@ -66,6 +66,13 @@ func (pw *ProcessingWorker) processNext(ctx context.Context, imageProc *ImagePro
 		return
 	}
 	if job == nil {
+		return
+	}
+
+	// Check if exceeded retries
+	if job.RetryCount >= job.MaxRetries {
+		log.Printf("Job %d exceeded max retries, marking as failed", job.ID)
+		pw.config.DB.UpdateJobStatus(ctx, job.ID, "failed", "Max retries exceeded")
 		return
 	}
 

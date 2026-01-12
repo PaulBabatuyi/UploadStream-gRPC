@@ -33,7 +33,7 @@ type ProcessingJob struct {
 	Status          string
 	RetryCount      int
 	MaxRetries      int
-	ErrorMessage    string
+	ErrorMessage    *string
 	ThumbnailSmall  string
 	ThumbnailMedium string
 	ThumbnailLarge  string

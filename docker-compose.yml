@@ -62,40 +62,6 @@ services:
       - uploadstream
     restart: unless-stopped
 
-  # Grafana (metrics visualization)
-  grafana:
-    image: grafana/grafana:latest
-    container_name: uploadstream-grafana
-    environment:
-      GF_SECURITY_ADMIN_PASSWORD: admin
-      GF_USERS_ALLOW_SIGN_UP: false
-      GF_SERVER_ROOT_URL: http://localhost:3000
-    ports:
-      - "3000:3000"
-    volumes:
-      - grafana_data:/var/lib/grafana
-      - ./grafana/dashboards:/etc/grafana/provisioning/dashboards:ro
-      - ./grafana/datasources:/etc/grafana/provisioning/datasources:ro
-    depends_on:
-      - prometheus
-    networks:
-      - uploadstream
-    restart: unless-stopped
-
-  # Jaeger (distributed tracing)
-  jaeger:
-    image: jaegertracing/all-in-one:1.53
-    container_name: uploadstream-jaeger
-    environment:
-      COLLECTOR_OTLP_ENABLED: true
-    ports:
-      - "16686:16686"  # Jaeger UI
-      - "14250:14250"  # gRPC receiver
-      - "4317:4317"    # OTLP gRPC receiver
-      - "4318:4318"    # OTLP HTTP receiver
-    networks:
-      - uploadstream
-    restart: unless-stopped
 
 networks:
   uploadstream:
@@ -105,4 +71,3 @@ volumes:
   postgres_data:
   file_storage:
   prometheus_data:
-  grafana_data:

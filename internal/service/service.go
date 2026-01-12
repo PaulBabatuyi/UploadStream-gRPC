@@ -252,8 +252,12 @@ func (s *fileServer) GetFileMetadata(ctx context.Context, req *pbv1.GetFileMetad
 			processingStatus = pbv1.ProcessingStatus_PROCESSING_STATUS_PROCESSING
 		case "failed":
 			processingStatus = pbv1.ProcessingStatus_PROCESSING_STATUS_FAILED
+			errorMsg := ""
+			if job.ErrorMessage != nil {
+				errorMsg = *job.ErrorMessage
+			}
 			processingResult = &pbv1.ProcessingResult{
-				ErrorMessage: job.ErrorMessage,
+				ErrorMessage: errorMsg,
 			}
 		}
 	}

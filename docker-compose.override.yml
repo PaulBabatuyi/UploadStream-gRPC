@@ -1,0 +1,6 @@
+services:
+  uploadstream:
+    volumes:
+      - .:/app  # live code
+    ports:
+      - "50051:50051"

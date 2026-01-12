@@ -4,6 +4,7 @@ import (
 	"context"
 	"log"
 	"net"
+	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
@@ -23,6 +24,10 @@ import (
 )
 
 func main() {
+	http.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("OK from server"))
+	})
 	// Initialize logger
 	isDev := os.Getenv("ENV") != "production"
 	logger, err := observability.InitLogger(isDev)

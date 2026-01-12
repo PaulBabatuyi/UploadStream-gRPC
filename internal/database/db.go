@@ -137,11 +137,15 @@ func (p *PostgresDB) GetNextPendingJob(ctx context.Context) (*ProcessingJob, err
         FOR UPDATE SKIP LOCKED
     `
 	var job ProcessingJob
+	var errorMsg sql.NullString
 	err := p.db.QueryRowContext(ctx, query).Scan(
-		&job.ID, &job.FileID, &job.Status, &job.RetryCount, &job.MaxRetries, &job.ErrorMessage,
+		&job.ID, &job.FileID, &job.Status, &job.RetryCount, &job.MaxRetries, &errorMsg,
 	)
 	if err == sql.ErrNoRows {
 		return nil, nil
+	}
+	if err == nil && errorMsg.Valid {
+		job.ErrorMessage = &errorMsg.String
 	}
 	return &job, err
 }

@@ -81,7 +81,7 @@ func (fc *FileClient) UploadFile(ctx context.Context, filePath, userID string) (
 	}
 
 	// Create upload stream
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second) // Longer for files
+	ctx, cancel := context.WithTimeout(ctx, 30*time.Second) // Longer for files
 	defer cancel()
 	stream, err := fc.client.UploadFile(ctx)
 	if err != nil {
@@ -290,6 +290,10 @@ func detectContentType(filePath string) string {
 }
 
 func main() {
+	http.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("OK from client "))
+	})
 	// Create client
 	client, err := NewFileClient(serverAddr)
 	if err != nil {
