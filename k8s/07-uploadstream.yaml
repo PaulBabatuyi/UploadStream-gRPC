@@ -1,0 +1,114 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: uploadstream
+  namespace: uploadstream
+  labels:
+    app: uploadstream
+spec:
+  replicas: 2
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app: uploadstream
+  template:
+    metadata:
+      labels:
+        app: uploadstream
+    spec:
+      serviceAccountName: uploadstream
+      containers:
+      - name: uploadstream
+        image: uploadstream:latest
+        imagePullPolicy: Never  # Use local image, change to IfNotPresent for registry
+        ports:
+        - name: grpc
+          containerPort: 50051
+          protocol: TCP
+        - name: metrics
+          containerPort: 9090
+          protocol: TCP
+        env:
+        - name: UPLOADSTREAM
+          valueFrom:
+            secretKeyRef:
+              name: uploadstream-db-secret
+              key: DATABASE_URL
+        - name: ENV
+          valueFrom:
+            configMapKeyRef:
+              name: uploadstream-config
+              key: ENV
+        volumeMounts:
+        - name: file-storage
+          mountPath: /app/data/files
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 9090
+          initialDelaySeconds: 15
+          periodSeconds: 20
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 9090
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 2
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "250m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+      volumes:
+      - name: file-storage
+        persistentVolumeClaim:
+          claimName: file-storage-pvc
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                - key: app
+                  operator: In
+                  values:
+                  - uploadstream
+              topologyKey: kubernetes.io/hostname
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: uploadstream
+  namespace: uploadstream
+  labels:
+    app: uploadstream
+spec:
+  type: ClusterIP
+  ports:
+  - port: 50051
+    targetPort: grpc
+    protocol: TCP
+    name: grpc
+  - port: 9090
+    targetPort: metrics
+    protocol: TCP
+    name: metrics
+  selector:
+    app: uploadstream
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: uploadstream
+  namespace: uploadstream

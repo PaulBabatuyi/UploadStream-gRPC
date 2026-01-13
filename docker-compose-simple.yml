@@ -1,4 +1,3 @@
-
 services:
   # PostgreSQL database
   postgres:
@@ -43,25 +42,6 @@ services:
       - uploadstream
     restart: unless-stopped
 
-  # Prometheus (metrics collection)
-  prometheus:
-    image: prom/prometheus:latest
-    container_name: uploadstream-prometheus
-    command:
-      - '--config.file=/etc/prometheus/prometheus.yml'
-      - '--storage.tsdb.path=/prometheus'
-      - '--web.console.libraries=/usr/share/prometheus/console_libraries'
-      - '--web.console.templates=/usr/share/prometheus/consoles'
-    ports:
-      - "9091:9090"  # Changed to avoid conflict with app metrics
-    volumes:
-      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
-      - prometheus_data:/prometheus
-    networks:
-      - uploadstream
-    restart: unless-stopped
-
-
 networks:
   uploadstream:
     driver: bridge
@@ -69,4 +49,3 @@ networks:
 volumes:
   postgres_data:
   file_storage:
-  prometheus_data:

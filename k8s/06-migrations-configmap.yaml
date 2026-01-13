@@ -1,0 +1,44 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: migrations-config
+  namespace: uploadstream
+data:
+  000001_create_files_table.up.sql: |
+    CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+    CREATE TABLE IF NOT EXISTS files (
+        id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+        user_id VARCHAR(255) NOT NULL,
+        filename VARCHAR(255) NOT NULL,
+        content_type VARCHAR(255),
+        size BIGINT NOT NULL,
+        storage_path VARCHAR(500) NOT NULL,
+        uploaded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        deleted_at TIMESTAMP,
+        file_type TEXT DEFAULT 'other'
+    );
+    CREATE INDEX idx_files_user_id ON files(user_id);
+    CREATE INDEX idx_files_uploaded_at ON files(uploaded_at);
+    CREATE INDEX idx_files_file_type ON files(file_type);
+  000002_create_processing_jobs_table.up.sql: |
+    CREATE TABLE IF NOT EXISTS processing_jobs (
+        id BIGSERIAL PRIMARY KEY,
+        file_id UUID NOT NULL REFERENCES files(id) ON DELETE CASCADE,
+        status TEXT NOT NULL DEFAULT 'pending',
+        retry_count INT DEFAULT 0,
+        max_retries INT DEFAULT 3,
+        error_message TEXT,
+        thumbnail_small TEXT,
+        thumbnail_medium TEXT,
+        thumbnail_large TEXT,
+        original_width INT,
+        original_height INT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        completed_at TIMESTAMP
+    );
+    CREATE INDEX idx_jobs_status ON processing_jobs(status);
+    CREATE INDEX idx_jobs_file_id ON processing_jobs(file_id);
+  000003_add_files_type.down.sql: |
+    ALTER TABLE files DROP COLUMN IF EXISTS file_type;
+    DROP INDEX IF EXISTS idx_files_file_type;

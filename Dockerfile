@@ -26,8 +26,8 @@ RUN mkdir -p /app/data/files
 
 EXPOSE 50051 9090
 
-HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-  CMD wget --quiet --tries=1 --spider http://localhost:9090/health || exit 1
+HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \
+  CMD wget --quiet --tries=1 --spider http://localhost:9090/metrics || exit 1
 
 RUN adduser -D -u 1000 appuser && \
     chown -R appuser:appuser /app
